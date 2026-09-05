@@ -31,14 +31,20 @@
 // ────────────────────────── WHY EXHAUSTIVE ───────────────────────────
 //
 // Greedy-by-cheapest is the obvious implementation and it is WRONG for
-// objective 1.  Counter-example, with the seeded warehouses:
+// objective 1.  Minimal counter-example, two warehouses:
 //
-//   need 30 · MAIN(weight 1.0, 20 available) · EAST(weight 1.4, 30 available)
-//   greedy-by-cheapest → MAIN 20 + EAST 10  = TWO shipments, cost 600
-//   fewest-shipments   → EAST 30            = ONE shipment,  cost 350
+//   need 30 · A(weight 1.0, 20 available) · B(weight 1.4, 30 available)
+//   greedy-by-cheapest → A 20 + B 10  = TWO shipments, cost 600
+//   fewest-shipments   → B 30         = ONE shipment,  cost 350
 //
 // Greedy picks the more expensive answer AND splits a line that did not need
-// splitting.  So we enumerate instead.  This is a subset-sum problem, but the
+// splitting.  So we enumerate instead.
+//
+// This is not a hypothetical: db/seed/04-stock.sql seeds MOUSE so that exactly
+// one warehouse — and deliberately NOT the cheapest one — can cover a 40-unit
+// line, and that seed file RAISES if a later edit breaks the arrangement.
+// Against the seeded data the gap is 1 shipment at ₹387.50 versus greedy's
+// 3 shipments at ₹962.50, which is the version worth showing on stage.  This is a subset-sum problem, but the
 // input is warehouses — a real business has tens, not thousands — so 2^n over
 // n <= MAX_EXHAUSTIVE is microseconds.  Above that we fall back to greedy and
 // SAY SO in the returned strategy, rather than quietly returning a worse plan.
