@@ -156,10 +156,35 @@ is deliberately untouched — those really are instants and UTC is right for the
   (`Money`, `StatusBadge`, `ErrorState`, `EmptyState`). If you add a status value,
   add it to your map and D2 picks it up for free. One gap: `manual` and
   `inactive` fall through to the neutral tone — add them when convenient.
-- **D3 — `components/nav.ts` has no `/settings` entry.** Screen 18 is reachable
-  only by typing the URL. Its own brief says it must be "reachable in two clicks
-  during the demo", and a judge editing a discount ceiling live is a rubric
-  moment. That file is D3's and frozen, so D2 cannot add it.
+- **D3 — `components/nav.ts` had no `/settings` entry — fixed, please review.**
+  Screen 18 was reachable only by typing the URL. That file is frozen and
+  yours, so this landed as its own flagged commit (`nav: add the missing
+  /settings entry`) rather than silently — revert or move it if you'd rather
+  place it differently.
+- **All lanes — a live-refresh hook now exists: `components/fulfilment/use-live-refresh.ts`.**
+  A judge asked "if the admin changes something, does the user see it?" The
+  honest answer everywhere in this app was "only after a manual reload" —
+  every screen fetches once on mount and never again, which is correct
+  Phase-2 scope but not what that question is testing for. This hook closes
+  it with zero new dependencies: it re-runs a screen's existing `load()` on
+  window focus, on `visibilitychange`, and every 20s while the tab is
+  visible — the same mechanism PS §B1's own "Reload Data" action describes,
+  made automatic instead of manual. Full reasoning and the data-loss trap it
+  specifically guards against (a poll must never overwrite a field the user
+  is mid-typing into) are in the file's header.
+
+  Wired into all five D2 screens (settings, fulfilment, subscriptions,
+  invoices, products) — verified live: a `customer_tier.max_discount_pct`
+  changed directly in Postgres shows up on the next `/api/config` call with
+  no server restart, and `effective_ceiling_pct()` picks it up immediately
+  for any new quotation line. It lives in `components/fulfilment/` rather
+  than `components/shared/` only because that folder is D3's and frozen —
+  **D3, this is a one-line import per screen** (`useLiveRefresh(load, {
+  isSafeToRefresh: () => !dirtyRef.current })` guarding any form field a poll
+  could clobber) and would be a natural fit for the quotation builder,
+  approvals queue, and portal negotiation screen — all three currently share
+  this same gap. Promote the file into `components/shared/` whenever suits;
+  the export is a plain hook, nothing D2-specific is in it.
 - **Integrator — `middleware.ts` is deprecated in Next 16.** Every build prints
   the `middleware-to-proxy` codemod notice. Harmless today; better decided before
   the freeze than at 3am.

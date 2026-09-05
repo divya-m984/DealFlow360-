@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useLiveRefresh } from '@/components/fulfilment/use-live-refresh'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,13 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { ErrorState } from '@/components/shared/error-state'
 import { EmptyState } from '@/components/shared/empty-state'
 import {qty as fq, date as fd } from '@/components/billing/format'
+
+// MUST MATCH FULFIL_WRITE_ROLES in app/api/fulfilment/[id]/reserve/route.ts.
+// PS §3 gives "warehouse fulfillment splits and backorder decisions" to the
+// Finance / Operations user; the Sales Rep gets "tracks ... fulfillment
+// progress", which is a read.  The API enforces this — this constant only
+// decides whether we render a button that would 403, or say why it is absent.
+const FULFIL_ROLES = ['finance', 'admin']
 
 type StockRow = {
   warehouseId: number; warehouseCode?: string; warehouseName?: string
@@ -52,18 +60,31 @@ export default function OrderFulfilmentPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [edit, setEdit] = useState<Record<number, Record<number, string>>>({})
+  const [role, setRole] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
-    const [f, o] = await Promise.all([fetch(`/api/fulfilment/${id}`), fetch(`/api/orders/${id}`)])
+    const [f, o, m] = await Promise.all([
+      fetch(`/api/fulfilment/${id}`), fetch(`/api/orders/${id}`), fetch('/api/auth/me'),
+    ])
     const fb = await f.json()
     const ob = await o.json()
     if (!f.ok) return setError(fb?.error?.message ?? 'Could not load the order')
     setFx(fb.data)
     if (o.ok) setOrd(ob.data)
+    if (m.ok) setRole((await m.json()).data.role)
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Stock arriving, another rep reserving the same order's lines, or an
+  // admin changing a warehouse's shipping weight on Settings, all become
+  // visible here on their own. `edit` already models "there is an unsaved
+  // manual-override quantity on screen right now" — reuse it rather than
+  // adding a second flag; a poll must not overwrite a half-typed override.
+  useLiveRefresh(load, {
+    isSafeToRefresh: () => busy === null && Object.keys(edit).length === 0,
+  })
 
   async function act(path: string, body?: unknown, label = 'Done') {
     setBusy(path); setError(null); setNotice(null)
@@ -107,6 +128,7 @@ export default function OrderFulfilmentPage() {
   const progress = ord?.progress ?? { confirmed: true, shipped: false, invoiced: false, paid: false }
   const anyPlanned = stockLines.some((l) => l.allocations.some((a) => a.status === 'planned'))
   const anyReserved = stockLines.some((l) => l.allocations.some((a) => a.status === 'reserved'))
+  const canFulfil = role !== null && FULFIL_ROLES.includes(role)
 
   return (
     <div className="space-y-5 p-6">
@@ -151,16 +173,24 @@ export default function OrderFulfilmentPage() {
 
         {/* ───────────────────────── SCREEN 8 ───────────────────────── */}
         <TabsContent value="split" className="space-y-4 pt-4">
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => act('plan', {}, 'Suggested split accepted.')} disabled={busy !== null}>
-              {anyPlanned ? 'Recompute suggested split' : 'Accept suggested split'}
-            </Button>
-            <Button variant="outline" onClick={() => act('reserve', {}, 'Stock reserved.')} disabled={busy !== null || !anyPlanned}>
-              Reserve stock
-            </Button>
-            <Button variant="outline" onClick={() => act('ship', {}, 'Marked as shipped.')} disabled={busy !== null || !anyReserved}>
-              Mark shipped
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {canFulfil ? (
+              <>
+                <Button onClick={() => act('plan', {}, 'Suggested split accepted.')} disabled={busy !== null}>
+                  {anyPlanned ? 'Recompute suggested split' : 'Accept suggested split'}
+                </Button>
+                <Button variant="outline" onClick={() => act('reserve', {}, 'Stock reserved.')} disabled={busy !== null || !anyPlanned}>
+                  Reserve stock
+                </Button>
+                <Button variant="outline" onClick={() => act('ship', {}, 'Marked as shipped.')} disabled={busy !== null || !anyReserved}>
+                  Mark shipped
+                </Button>
+              </>
+            ) : (
+              <Badge variant="secondary">
+                Read-only — {role ?? 'unknown role'} may track fulfilment, not move stock
+              </Badge>
+            )}
           </div>
 
           {stockLines.length === 0 && (
@@ -258,7 +288,7 @@ export default function OrderFulfilmentPage() {
                               {fq(l.consolidate.fillable_qty)} of them can be filled from stock now.
                               {l.consolidate.still_short > 0 && ` ${fq(l.consolidate.still_short)} would remain outstanding.`}
                             </p>
-                            <Button size="sm" className="mt-2" disabled={busy !== null}
+                            <Button size="sm" className="mt-2" disabled={busy !== null || !canFulfil}
                               onClick={() => act('consolidate', {}, 'Backorder consolidated.')}>
                               Consolidate remaining backorder
                             </Button>
@@ -290,7 +320,7 @@ export default function OrderFulfilmentPage() {
                               }))} />
                           </div>
                         ))}
-                        <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => saveOverride(l)}>
+                        <Button size="sm" variant="secondary" disabled={busy !== null || !canFulfil} onClick={() => saveOverride(l)}>
                           Save override
                         </Button>
                       </div>

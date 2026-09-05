@@ -10,8 +10,9 @@
 // 23514 is not a message anybody can act on.
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useLiveRefresh } from '@/components/fulfilment/use-live-refresh'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -38,6 +39,13 @@ export default function ProductDetailPage() {
   const [form, setForm] = useState<any>({})
   const [receive, setReceive] = useState<Record<number, string>>({})
 
+  // Set on any edit to `form` (the price/cost/tax/unit form) or `receive`
+  // (per-warehouse stock-receipt quantities); cleared the instant load()
+  // repopulates both from the server. Without this an admin mid-edit on
+  // this exact product's price would see their own typing overwritten by
+  // the poll that exists to show them OTHER people's edits.
+  const dirty = useRef(false)
+
   const load = useCallback(async () => {
     setError(null)
     const [r, m] = await Promise.all([fetch(`/api/products/${id}`), fetch('/api/auth/me')])
@@ -50,9 +58,15 @@ export default function ProductDetailPage() {
       recurring_cycle: b.data.recurring_cycle, is_active: b.data.is_active,
     })
     if (m.ok) setRole((await m.json()).data.role)
+    dirty.current = false
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // A judge who edits this same product's price on another machine, or an
+  // admin who receives stock against it elsewhere, becomes visible here —
+  // unless this screen has its own unsaved edit in flight.
+  useLiveRefresh(load, { isSafeToRefresh: () => !dirty.current && !busy })
 
   const canEdit = role !== null && EDIT_ROLES.includes(role)
 
@@ -138,13 +152,13 @@ export default function ProductDetailPage() {
                 <label className="w-28 text-sm text-muted-foreground">{label}</label>
                 <Input className="w-40 text-right" disabled={!canEdit}
                   type={k === 'unit' ? 'text' : 'number'} step="0.01"
-                  value={form[k] ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, [k]: e.target.value }))} />
+                  value={form[k] ?? ''} onChange={(e) => { dirty.current = true; setForm((f: any) => ({ ...f, [k]: e.target.value })) }} />
               </div>
             ))}
             <div className="flex items-center gap-3">
               <label className="w-28 text-sm text-muted-foreground">Active</label>
               <Checkbox disabled={!canEdit} checked={!!form.is_active}
-                onCheckedChange={(v) => setForm((f: any) => ({ ...f, is_active: v === true }))} />
+                onCheckedChange={(v) => { dirty.current = true; setForm((f: any) => ({ ...f, is_active: v === true })) }} />
             </div>
           </CardContent>
         </Card>
@@ -161,18 +175,18 @@ export default function ProductDetailPage() {
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3">
               <Checkbox disabled={!canEdit} checked={!!form.is_subscription}
-                onCheckedChange={(v) => setForm((f: any) => ({
+                onCheckedChange={(v) => { dirty.current = true; setForm((f: any) => ({
                   ...f,
                   is_subscription: v === true,
                   recurring_cycle: v === true ? (f.recurring_cycle ?? 'monthly') : null,
-                }))} />
+                })) }} />
               <span className="text-sm">Billed on a recurring cycle</span>
             </div>
             {form.is_subscription && (
               <div className="flex items-center gap-3">
                 <label className="w-28 text-sm text-muted-foreground">Cycle</label>
                 <Select value={form.recurring_cycle ?? 'monthly'}
-                  onValueChange={(v) => setForm((f: any) => ({ ...f, recurring_cycle: v ?? f.recurring_cycle }))}>
+                  onValueChange={(v) => { dirty.current = true; setForm((f: any) => ({ ...f, recurring_cycle: v ?? f.recurring_cycle })) }}>
                   <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CYCLES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -294,7 +308,7 @@ export default function ProductDetailPage() {
                           <div className="flex items-center justify-end gap-1">
                             <Input type="number" min="1" className="w-20 text-right"
                               value={receive[s.warehouse_id] ?? ''}
-                              onChange={(e) => setReceive((r) => ({ ...r, [s.warehouse_id]: e.target.value }))} />
+                              onChange={(e) => { dirty.current = true; setReceive((r) => ({ ...r, [s.warehouse_id]: e.target.value })) }} />
                             <Button size="sm" variant="secondary" disabled={busy}
                               onClick={() => receiveStock(s.warehouse_id)}>Receive</Button>
                           </div>
