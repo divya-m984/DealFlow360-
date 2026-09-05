@@ -20,6 +20,7 @@ export type ListData<T> = {
   rows: T[] | undefined
   loading: boolean
   error: ApiError | null
+  /** Re-request and show the loading state — for a failed load. */
   retry: () => void
 }
 
