@@ -17,6 +17,23 @@ types.setTypeParser(types.builtins.INT8, (v) => parseInt(v, 10))
 // numeric(14,2) exists to prevent.  Format it for display; never parseFloat it
 // and write it back.
 
+// Postgres `date` (OID 1082) is a CALENDAR DATE — no time, no timezone.
+// node-postgres turns it into a JS Date at LOCAL midnight, and JSON.stringify
+// then serialises that to UTC.  On any machine east of Greenwich the browser
+// therefore receives the DAY BEFORE the one in the database:
+//
+//   db 2026-10-05  →  Date(2026-10-05 00:00 IST)  →  "2026-10-04T18:30:00Z"
+//                                                     ^^ the screen shows the 4th
+//
+// Gandhinagar is UTC+5:30, so this is wrong on every machine at the event, on
+// every due date, period boundary and promised delivery date — including the
+// ones printed on a customer invoice.  Keeping it as the string Postgres sent
+// is both correct and simpler: a date has no instant to convert.
+//
+// timestamptz (OID 1184) is deliberately LEFT alone — those really are
+// instants, and UTC is the right wire format for them.
+types.setTypeParser(types.builtins.DATE, (v) => v)
+
 // Next's hot reload re-evaluates modules on every recompile.  Without this
 // cache you get a new Pool per recompile and exhaust Postgres connections by
 // mid-evening — with four dev servers running, sooner.

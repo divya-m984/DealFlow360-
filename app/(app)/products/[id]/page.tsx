@@ -19,7 +19,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Money, qty as fq } from '@/components/billing/format'
+import { Money } from '@/components/shared/money'
+import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
+import { EmptyState } from '@/components/shared/empty-state'
+import {qty as fq } from '@/components/billing/format'
 
 const EDIT_ROLES = ['admin', 'sales_manager']
 const CYCLES = ['weekly', 'monthly', 'quarterly', 'yearly'] as const
@@ -90,8 +94,7 @@ export default function ProductDetailPage() {
   if (error && !p) {
     return (
       <div className="p-6">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button className="mt-3" variant="outline" onClick={load}>Try again</Button>
+        <ErrorState error={error} onRetry={load} />
       </div>
     )
   }
@@ -111,8 +114,8 @@ export default function ProductDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {p.is_subscription && <Badge variant="secondary">subscription · {p.recurring_cycle}</Badge>}
-          {!p.is_active && <Badge variant="destructive">inactive</Badge>}
+          {p.is_subscription && <StatusBadge status={p.recurring_cycle} label={`subscription · ${p.recurring_cycle}`} />}
+          {!p.is_active && <StatusBadge status="inactive" />}
           {canEdit && <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>}
         </div>
       </div>
@@ -226,7 +229,7 @@ export default function ProductDetailPage() {
           </CardHeader>
           <CardContent>
             {p.variants.length === 0 ? (
-              <p className="text-sm text-muted-foreground">This product has no variants.</p>
+              <EmptyState title="No variants" description="Variants are seeded and rendered, never generated." />
             ) : (
               <Table>
                 <TableHeader>
@@ -262,7 +265,7 @@ export default function ProductDetailPage() {
           </CardHeader>
           <CardContent>
             {p.stock.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Services and subscriptions are fulfilled on confirmation.</p>
+              <EmptyState title="Not stock-managed" description="Held in no warehouse, so it is never split and never backordered — services and subscriptions are fulfilled on confirmation." />
             ) : (
               <Table>
                 <TableHeader>
@@ -280,7 +283,7 @@ export default function ProductDetailPage() {
                     <TableRow key={s.id}>
                       <TableCell>
                         {s.warehouse_name}
-                        {s.below_reorder_point && <Badge variant="destructive" className="ml-2">below reorder</Badge>}
+                        {s.below_reorder_point && <StatusBadge status="rejected" label="below reorder" className="ml-2" />}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{fq(s.qty_on_hand)}</TableCell>
                       <TableCell className="text-right tabular-nums">{fq(s.qty_reserved)}</TableCell>

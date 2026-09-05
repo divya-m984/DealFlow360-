@@ -17,9 +17,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { ConfigPayload } from '@/lib/types/catalog'
+import { SHIPMENT_BASE_COST } from '@/lib/allocate'
 
 const WRITE_ROLES = ['admin', 'finance']
 
@@ -114,8 +117,7 @@ export default function SettingsPage() {
   if (error && !cfg) {
     return (
       <div className="p-6">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button className="mt-3" variant="outline" onClick={load}>Try again</Button>
+        <ErrorState error={error} onRetry={load} />
       </div>
     )
   }
@@ -269,7 +271,7 @@ export default function SettingsPage() {
               {bands.map((b) => (
                 <TableRow key={b.band}>
                   <TableCell>
-                    <Badge variant={b.band === 'HIGH' ? 'destructive' : b.band === 'MEDIUM' ? 'secondary' : 'outline'}>{b.band}</Badge>
+                    <StatusBadge status={b.band} />
                   </TableCell>
                   <TableCell className="tabular-nums">{b.range}</TableCell>
                   <TableCell className="text-center">
@@ -330,7 +332,7 @@ export default function SettingsPage() {
                   <TableCell className="font-mono text-xs">{w.code}</TableCell>
                   <TableCell>{w.name}</TableCell>
                   <TableCell className="text-right tabular-nums">{w.shipping_cost_weight}</TableCell>
-                  <TableCell className="text-right tabular-nums">₹{(250 * Number(w.shipping_cost_weight)).toFixed(2)}</TableCell>
+                  <TableCell className="text-right tabular-nums">₹{(SHIPMENT_BASE_COST * Number(w.shipping_cost_weight)).toFixed(2)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

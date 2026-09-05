@@ -7,7 +7,8 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Money, qty } from '@/components/billing/format'
+import { Money } from '@/components/shared/money'
+import { qty } from '@/components/billing/format'
 
 export type Plan = {
   allocations: { warehouseId: number; warehouseCode?: string; warehouseName?: string; qty: number; shippingCost: number }[]

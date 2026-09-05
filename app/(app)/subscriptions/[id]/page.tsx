@@ -17,7 +17,11 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Money, qty as fq, date as fd } from '@/components/billing/format'
+import { Money } from '@/components/shared/money'
+import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
+import { EmptyState } from '@/components/shared/empty-state'
+import {qty as fq, date as fd, localDate } from '@/components/billing/format'
 
 const CHANGE_ROLES = ['sales_manager', 'finance', 'admin']
 
@@ -68,8 +72,7 @@ export default function SubscriptionDetailPage() {
   if (error && !sub) {
     return (
       <div className="p-6">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button className="mt-3" variant="outline" onClick={load}>Try again</Button>
+        <ErrorState error={error} onRetry={load} />
       </div>
     )
   }
@@ -94,7 +97,7 @@ export default function SubscriptionDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={active ? 'secondary' : 'destructive'}>{sub.status}</Badge>
+          <StatusBadge status={sub.status} />
           <span className="text-lg font-semibold"><Money value={sub.period_amount} currency={cur} /></span>
         </div>
       </div>
@@ -123,9 +126,9 @@ export default function SubscriptionDetailPage() {
         </CardContent>
       </Card>
 
-      {active && canChange && (
+      {sub.status !== 'cancelled' && canChange && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
+          <Card className={active ? '' : 'opacity-60'}>
             <CardHeader>
               <CardTitle className="text-base">Change mid-cycle</CardTitle>
               <CardDescription>Writes one immutable ledger row. A negative delta becomes a credit note.</CardDescription>
@@ -155,7 +158,7 @@ export default function SubscriptionDetailPage() {
                   <Input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} />
                 </div>
               </div>
-              <Button disabled={busy} onClick={() => post('change', {
+              <Button disabled={busy || !active} onClick={() => post('change', {
                 newQty: Number(newQty),
                 newPlanId: Number(newPlan),
                 ...(effective ? { effectiveDate: effective } : {}),
@@ -170,14 +173,32 @@ export default function SubscriptionDetailPage() {
               <CardTitle className="text-base">Billing actions</CardTitle>
               <CardDescription>
                 Refund policy on this plan is <strong>{sub.cancellation_refund}</strong>
-                {sub.cancellation_notice_days > 0 && <> with {sub.cancellation_notice_days} days notice</>}.
+                {sub.cancellation_notice_days > 0 && (
+                  <> with <strong>{sub.cancellation_notice_days} days notice</strong> — cancelling
+                  today takes effect on {localDate(new Date(Date.now() + sub.cancellation_notice_days * 864e5))},
+                  and only the days after that are refunded</>
+                )}.
+                {' '}Pausing stops future billing without refunding the current period.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
-              <Button variant="outline" disabled={busy}
-                onClick={() => post('invoice', {}, 'Period invoiced and rolled forward.')}>
-                Invoice this period
-              </Button>
+              {active ? (
+                <>
+                  <Button variant="outline" disabled={busy}
+                    onClick={() => post('invoice', {}, 'Period invoiced and rolled forward.')}>
+                    Invoice this period
+                  </Button>
+                  <Button variant="secondary" disabled={busy}
+                    onClick={() => post('pause', {}, 'Paused. No further billing until it is resumed.')}>
+                    Pause
+                  </Button>
+                </>
+              ) : (
+                <Button variant="secondary" disabled={busy}
+                  onClick={() => post('resume', {}, 'Resumed on a fresh period.')}>
+                  Resume
+                </Button>
+              )}
               <Button variant="destructive" disabled={busy}
                 onClick={() => post('cancel', effective ? { effectiveDate: effective } : {}, 'Cancelled.')}>
                 Cancel subscription
@@ -197,7 +218,7 @@ export default function SubscriptionDetailPage() {
         </CardHeader>
         <CardContent>
           {sub.events.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No changes yet.</p>
+            <EmptyState title="No changes yet" description="A mid-cycle quantity or plan change writes one immutable row here." />
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -214,7 +235,7 @@ export default function SubscriptionDetailPage() {
                 <TableBody>
                   {sub.events.map((e: any) => (
                     <TableRow key={e.id}>
-                      <TableCell><Badge variant="outline">{String(e.event_type).replace('_', ' ')}</Badge></TableCell>
+                      <TableCell><StatusBadge status={e.event_type} /></TableCell>
                       <TableCell>{fd(e.effective_date)}</TableCell>
                       <TableCell className="tabular-nums">{fq(e.old_qty)} → {fq(e.new_qty)}</TableCell>
                       <TableCell className="text-sm">
@@ -239,7 +260,7 @@ export default function SubscriptionDetailPage() {
         <CardHeader><CardTitle className="text-base">Invoices</CardTitle></CardHeader>
         <CardContent>
           {sub.invoices.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing billed yet.</p>
+            <EmptyState title="Nothing billed yet" description="The first invoice is raised when the period is billed." />
           ) : (
             <Table>
               <TableHeader>
@@ -255,7 +276,7 @@ export default function SubscriptionDetailPage() {
                     <TableCell><Link className="underline underline-offset-2" href={`/invoices/${i.id}`}>{i.number}</Link></TableCell>
                     <TableCell className="text-right"><Money value={i.amount_total} currency={cur} /></TableCell>
                     <TableCell className="text-right"><Money value={i.amount_paid} currency={cur} /></TableCell>
-                    <TableCell><Badge variant={i.status === 'paid' ? 'secondary' : 'destructive'}>{i.status}</Badge></TableCell>
+                    <TableCell><StatusBadge status={i.status} /></TableCell>
                     <TableCell>{fd(i.due_date)}</TableCell>
                   </TableRow>
                 ))}
