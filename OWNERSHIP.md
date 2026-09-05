@@ -125,6 +125,8 @@ them a second time** — which is the whole point of this document.
 | `components/fulfilment/related-products.tsx` | **D2** | The product-to-product many-to-many, both directions (ask 2). |
 | `app/api/negotiation/route.ts` | **D2** | Resolves a quotation's live thread so the chat component needs no props but the quotation id. |
 | ⚠ `app/(app)/quotations/[id]/page.tsx` | **D1 — 4-line addition by D2** | An import and one `<NegotiationThread quotationId={Number(id)} />`. Deliberately kept to four lines because this file is 550+ lines and actively worked; the component carries all of its own state, so **deleting those four lines removes the feature cleanly.** Move it wherever you prefer. |
+| `lib/alerts.ts`, `app/api/alerts/scan/**`, `components/admin/alert-scan.tsx` | **D2** | CLAIMED. **Live deal-alert detection.** Before this, the only INSERTs into `deal_alert` anywhere in the repo were in `db/seed/05-quotations.sql` and `06-orders.sql` — every alert a judge ever saw on screen 14 was a fixture. The detector writes into the same table D1's `GET /api/deal-alerts` already reads, so **neither D1's route nor D3's screen changed**. Idempotent: `one_open_alert_per_kind` is a partial unique index, so re-scanning refreshes an alert's detail instead of duplicating it. It also auto-resolves — an alert whose condition stops being true closes itself, which is what stops the screen becoming a list nobody clears. |
+| ⚠ `app/(app)/deal-health/page.tsx` | **D3 — 2 additions by D2** | An import and `<AlertScan onDone={retry} />`. Self-contained; delete both to remove it. |
 
 ### ⚠ TWO changes to FROZEN files
 
