@@ -28,6 +28,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { useListData } from '@/components/shared/use-list-data'
 import { Skeleton } from '@/components/ui/skeleton'
+import { NewQuotationButton } from '@/components/quotation/new-quotation-button'
 
 type QuotationRow = {
   id: number
@@ -300,6 +301,11 @@ export default function QuotationsPage() {
       <PageHeader
         title="Quotations"
         description="Every quotation in the pipeline, across all customers and stages."
+        // The mockup puts "+ New Quotation" on this screen and the dashboard.
+        // Until now the app had no way to start one at all — POST
+        // /api/quotations existed, but nothing called it, so PS §9 step 2
+        // ("create a quotation") could not be performed from the UI.
+        actions={<NewQuotationButton onCreated={retry} />}
       />
 
       {error ? (
