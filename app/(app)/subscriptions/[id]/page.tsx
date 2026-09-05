@@ -8,9 +8,10 @@
 //     delta = (new_rate − old_rate) × days_remaining ÷ days_in_period
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useLiveRefresh } from '@/components/fulfilment/use-live-refresh'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -36,6 +37,12 @@ export default function SubscriptionDetailPage() {
   const [newPlan, setNewPlan] = useState<string>('')
   const [effective, setEffective] = useState('')
 
+  // Set on any edit to the change-plan form below; cleared the instant
+  // load() repopulates it. Otherwise a manager mid-way through composing a
+  // qty/plan change would see their own inputs reset by the very poll that
+  // exists to show them someone ELSE'S change.
+  const dirty = useRef(false)
+
   const load = useCallback(async () => {
     setError(null)
     const [r, m] = await Promise.all([fetch(`/api/subscriptions/${id}`), fetch('/api/auth/me')])
@@ -45,9 +52,15 @@ export default function SubscriptionDetailPage() {
     setNewQty(String(Number(b.data.qty)))
     setNewPlan(String(b.data.plan_id))
     if (m.ok) setRole((await m.json()).data.role)
+    dirty.current = false
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Another user's cancel/pause/proration on this subscription — or an
+  // admin's plan-price edit on Settings — becomes visible here on its own,
+  // unless this screen has an unsaved change-plan edit in flight.
+  useLiveRefresh(load, { isSafeToRefresh: () => !dirty.current && !busy })
 
   async function post(path: string, body: unknown, label: string) {
     setBusy(true); setError(null); setNotice(null)
@@ -138,11 +151,11 @@ export default function SubscriptionDetailPage() {
                 <div>
                   <label className="text-xs text-muted-foreground">Quantity</label>
                   <Input type="number" min="0.001" step="1" className="w-28 text-right"
-                    value={newQty} onChange={(e) => setNewQty(e.target.value)} />
+                    value={newQty} onChange={(e) => { dirty.current = true; setNewQty(e.target.value) }} />
                 </div>
                 <div className="min-w-52 flex-1">
                   <label className="text-xs text-muted-foreground">Plan</label>
-                  <Select value={newPlan} onValueChange={(v) => setNewPlan(v ?? newPlan)}>
+                  <Select value={newPlan} onValueChange={(v) => { dirty.current = true; setNewPlan(v ?? newPlan) }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {sub.available_plans.map((p: any) => (
@@ -155,7 +168,7 @@ export default function SubscriptionDetailPage() {
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground">Effective</label>
-                  <Input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} />
+                  <Input type="date" value={effective} onChange={(e) => { dirty.current = true; setEffective(e.target.value) }} />
                 </div>
               </div>
               <Button disabled={busy || !active} onClick={() => post('change', {

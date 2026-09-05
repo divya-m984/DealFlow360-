@@ -6,9 +6,10 @@
 // payments in the same transaction that records them (lib/invoice.ts).
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useLiveRefresh } from '@/components/fulfilment/use-live-refresh'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -35,6 +36,12 @@ export default function InvoiceDetailPage() {
   const [method, setMethod] = useState<'bank' | 'cash' | 'card'>('bank')
   const [reference, setReference] = useState('')
 
+  // Set the instant the finance user types into the payment form; cleared
+  // the instant load() repopulates it. A poll that overwrites a half-typed
+  // payment amount back to the old amount_due is the one bug this screen
+  // must never have — worse than being merely stale, it is actively wrong.
+  const dirty = useRef(false)
+
   const load = useCallback(async () => {
     setError(null)
     const [r, m] = await Promise.all([fetch(`/api/invoices/${id}`), fetch('/api/auth/me')])
@@ -43,9 +50,15 @@ export default function InvoiceDetailPage() {
     setInv(b.data)
     setAmount(String(Number(b.data.amount_due)))
     if (m.ok) setRole((await m.json()).data.role)
+    dirty.current = false
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // A payment recorded by someone else on this invoice — or a status change
+  // from a subscription's billing run — shows up here without a manual
+  // reload, unless this user is mid-way through entering their own payment.
+  useLiveRefresh(load, { isSafeToRefresh: () => !dirty.current && !busy })
 
   async function pay(e: React.FormEvent) {
     e.preventDefault()
@@ -174,11 +187,11 @@ export default function InvoiceDetailPage() {
                   <div>
                     <label className="text-xs text-muted-foreground">Amount</label>
                     <Input type="number" step="0.01" min="0.01" className="w-36 text-right"
-                      value={amount} onChange={(e) => setAmount(e.target.value)} required />
+                      value={amount} onChange={(e) => { dirty.current = true; setAmount(e.target.value) }} required />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Method</label>
-                    <Select value={method} onValueChange={(v) => setMethod(v as any)}>
+                    <Select value={method} onValueChange={(v) => { dirty.current = true; setMethod(v as any) }}>
                       <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="bank">Bank</SelectItem>
@@ -189,7 +202,7 @@ export default function InvoiceDetailPage() {
                   </div>
                   <div className="flex-1">
                     <label className="text-xs text-muted-foreground">Reference</label>
-                    <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="NEFT-1234" />
+                    <Input value={reference} onChange={(e) => { dirty.current = true; setReference(e.target.value) }} placeholder="NEFT-1234" />
                   </div>
                   <Button type="submit" disabled={busy}>{busy ? 'Recording…' : 'Record payment'}</Button>
                 </div>

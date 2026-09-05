@@ -12,12 +12,13 @@
 // no deploy and no code edit.  That is the whole point of the screen.
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { useLiveRefresh } from '@/components/fulfilment/use-live-refresh'
 import { ErrorState } from '@/components/shared/error-state'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -48,6 +49,12 @@ export default function SettingsPage() {
 
   const canWrite = role !== null && WRITE_ROLES.includes(role)
 
+  // Set the instant any of the three tables is touched, cleared the instant a
+  // fresh load lands. An admin who edits Silver's ceiling to 3% and then
+  // tabs away must come back to their own half-typed "3", not a poll that
+  // silently reset it to whatever Bronze's ceiling was on the server.
+  const dirty = useRef(false)
+
   async function load() {
     setError(null)
     const [cRes, mRes] = await Promise.all([fetch('/api/config'), fetch('/api/auth/me')])
@@ -67,9 +74,15 @@ export default function SettingsPage() {
       high_requires_finance: high?.requires_finance ?? true,
     })
     if (mRes.ok) setRole((await mRes.json()).data.role)
+    dirty.current = false
   }
 
   useEffect(() => { load() }, [])
+
+  // Another admin's save becomes visible here without a manual reload —
+  // on refocus, and every 20s while the tab is open — unless THIS admin has
+  // unsaved edits of their own in flight.
+  useLiveRefresh(load, { isSafeToRefresh: () => !dirty.current && !busy })
 
   async function save() {
     if (!cfg || !policy) return
@@ -163,7 +176,7 @@ export default function SettingsPage() {
                       <Input type="number" step="0.01" min="0" max="100" disabled={!canWrite}
                         className="ml-auto w-28 text-right"
                         value={tierPct[t.id] ?? ''}
-                        onChange={(e) => setTierPct((s) => ({ ...s, [t.id]: e.target.value }))} />
+                        onChange={(e) => { dirty.current = true; setTierPct((s) => ({ ...s, [t.id]: e.target.value })) }} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -193,7 +206,7 @@ export default function SettingsPage() {
                       <Input type="number" step="0.01" min="0" max="100" disabled={!canWrite}
                         className="ml-auto w-28 text-right"
                         value={catPct[c.id] ?? ''}
-                        onChange={(e) => setCatPct((s) => ({ ...s, [c.id]: e.target.value }))} />
+                        onChange={(e) => { dirty.current = true; setCatPct((s) => ({ ...s, [c.id]: e.target.value })) }} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -253,7 +266,7 @@ export default function SettingsPage() {
             <Input type="number" step="0.01" min="0.02" max="100" disabled={!canWrite}
               className="w-28 text-right"
               value={policy.high_band_from}
-              onChange={(e) => setPolicy((p) => p && { ...p, high_band_from: e.target.value })} />
+              onChange={(e) => { dirty.current = true; setPolicy((p) => p && { ...p, high_band_from: e.target.value }) }} />
             <span className="text-muted-foreground">points over the ceiling</span>
           </div>
 
@@ -278,19 +291,19 @@ export default function SettingsPage() {
                     <Checkbox
                       disabled={!canWrite || b.band === 'LOW'}
                       checked={b.mgr}
-                      onCheckedChange={(v) => setPolicy((p) => p && ({
+                      onCheckedChange={(v) => { dirty.current = true; setPolicy((p) => p && ({
                         ...p,
                         [`${b.band.toLowerCase()}_requires_manager`]: v === true,
-                      } as PolicyForm))} />
+                      } as PolicyForm)) }} />
                   </TableCell>
                   <TableCell className="text-center">
                     <Checkbox
                       disabled={!canWrite || b.band === 'LOW'}
                       checked={b.fin}
-                      onCheckedChange={(v) => setPolicy((p) => p && ({
+                      onCheckedChange={(v) => { dirty.current = true; setPolicy((p) => p && ({
                         ...p,
                         [`${b.band.toLowerCase()}_requires_finance`]: v === true,
-                      } as PolicyForm))} />
+                      } as PolicyForm)) }} />
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {b.mgr && b.fin ? 'Manager → Finance' : b.mgr ? 'Manager only' : 'Auto-approved'}

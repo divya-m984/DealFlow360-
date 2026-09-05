@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useLiveRefresh } from '@/components/fulfilment/use-live-refresh'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -64,6 +65,15 @@ export default function OrderFulfilmentPage() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Stock arriving, another rep reserving the same order's lines, or an
+  // admin changing a warehouse's shipping weight on Settings, all become
+  // visible here on their own. `edit` already models "there is an unsaved
+  // manual-override quantity on screen right now" — reuse it rather than
+  // adding a second flag; a poll must not overwrite a half-typed override.
+  useLiveRefresh(load, {
+    isSafeToRefresh: () => busy === null && Object.keys(edit).length === 0,
+  })
 
   async function act(path: string, body?: unknown, label = 'Done') {
     setBusy(path); setError(null); setNotice(null)
