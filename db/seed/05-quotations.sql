@@ -14,6 +14,13 @@
 --   • one quotation at 22% where the rep average is 8%    → screen 14 anomaly
 --   • approval_request rows: one pending manager, one pending finance,
 --     one already approved
+--   • deal_alert rows of kind 'stalled' and 'discount_anomaly' — screen 14
+--     RENDERS deal_alert, it does not derive alerts from quotation columns.
+--     Seeding a 9-day-old last_activity_at is not enough on its own.
+--     (kind 'delivery_slippage' belongs to D2 in 06-orders.sql, because it
+--      needs sales_order.promised_delivery_date to exist first.)
+--   • audit_log rows for the approvals — PS §A3 wants user, timestamp AND
+--     reason visible on screen 6
 --
 -- Remember: over_by_pct / net_amount / margin_amount are GENERATED columns.
 -- Do not insert into them.

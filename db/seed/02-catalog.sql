@@ -9,13 +9,24 @@ INSERT INTO product_category (code, name, max_discount_pct) VALUES
   ('services',     'Services',     10.00),
   ('subscription', 'Subscription', 10.00);
 
+-- Prices keep the mockup's numbers exactly.  Onsite Setup is 450, not 400.
+-- Currency is INR everywhere (see 01-identity.sql for why).
+--
+-- COSTS ARE NOT DECORATION.  product.cost is NOT NULL and it drives
+-- margin_amount, the live margin indicator on screen 4, and upsell_rule's
+-- min_margin_pct.  It must also make PS §10's own justification TRUE:
+--   "Hardware items are allowed up to 15 percent, since they have healthy margins"
+--   "Service items are allowed only up to 10 percent, since they have thin margins"
+-- So Hardware reads ~25% and Services ~11%.  If the costs said otherwise, the
+-- seed data would argue against our own ceiling rule in front of a judge.
 INSERT INTO product (sku, name, category_id, base_price, cost, currency_code, unit, tax_pct, description, is_subscription, recurring_cycle) VALUES
-  ('LP14',  'Laptop Pro 14',        (SELECT id FROM product_category WHERE code='hardware'),     1200.0000,  900.0000, 'INR', 'Each',      18.00, '14-inch business laptop',       false, NULL),
-  ('SETUP', 'Onsite Setup Service', (SELECT id FROM product_category WHERE code='services'),      400.0000,  320.0000, 'INR', 'Each',      18.00, 'Onsite installation',           false, NULL),
-  ('DOCK',  'Docking Station',      (SELECT id FROM product_category WHERE code='hardware'),      180.0000,  120.0000, 'INR', 'Each',      18.00, 'USB-C dock',                    false, NULL),
-  ('MOUSE', 'Wireless Mouse',       (SELECT id FROM product_category WHERE code='hardware'),       45.0000,   25.0000, 'INR', 'Each',      18.00, 'Bluetooth mouse',               false, NULL),
-  ('CARE2', 'Care Plan 2yr',        (SELECT id FROM product_category WHERE code='subscription'),    40.0000,   18.0000, 'INR', 'Month',     18.00, 'Extended warranty and support', true,  'monthly'),
-  ('SLA',   'Support SLA',          (SELECT id FROM product_category WHERE code='subscription'),   300.0000,  150.0000, 'INR', 'Quarter',   18.00, 'Priority support',              true,  'quarterly');
+  ('LP14',  'Laptop Pro 14',        (SELECT id FROM product_category WHERE code='hardware'),     1200.0000,  900.0000, 'INR', 'Each',    18.00, '14-inch business laptop',       false, NULL),
+  ('SETUP', 'Onsite Setup Service', (SELECT id FROM product_category WHERE code='services'),      450.0000,  400.0000, 'INR', 'Each',    18.00, 'Onsite installation',           false, NULL),
+  ('DOCK',  'Docking Station',      (SELECT id FROM product_category WHERE code='hardware'),      180.0000,  135.0000, 'INR', 'Each',    18.00, 'USB-C dock',                    false, NULL),
+  ('MOUSE', 'Wireless Mouse',       (SELECT id FROM product_category WHERE code='hardware'),       45.0000,   25.0000, 'INR', 'Each',    18.00, 'Bluetooth mouse',               false, NULL),
+  ('WARR',  'Extended Warranty',    (SELECT id FROM product_category WHERE code='services'),      180.0000,  160.0000, 'INR', 'Each',    18.00, 'Extended hardware warranty',    false, NULL),
+  ('CARE2', 'Care Plan 2yr',        (SELECT id FROM product_category WHERE code='subscription'),    40.0000,   18.0000, 'INR', 'Month',   18.00, 'Extended warranty and support', true,  'monthly'),
+  ('SLA',   'Support SLA',          (SELECT id FROM product_category WHERE code='subscription'),   300.0000,  150.0000, 'INR', 'Quarter', 18.00, 'Priority support',              true,  'quarterly');
 
 -- variants (read-only in the UI — seeded, not generated)
 INSERT INTO product_attribute (product_id, name, sort_order) VALUES

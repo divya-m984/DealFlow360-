@@ -9,6 +9,9 @@
 --   • one active subscription mid-cycle                  → proration has
 --     something to prorate
 --   • invoices: one unpaid, one partial, one paid        → screen 12
+--   • ONE deal_alert of kind 'delivery_slippage' for the late order.
+--     D1 seeds the 'stalled' and 'discount_anomaly' alerts in 05; this one is
+--     yours because it needs sales_order.promised_delivery_date to exist.
 BEGIN;
 -- TODO(D2)
 COMMIT;
