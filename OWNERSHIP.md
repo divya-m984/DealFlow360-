@@ -90,3 +90,42 @@ container** — nobody needs postgresql-client installed.
 - **Always `git pull --rebase`.** Never plain `git pull`.
 - **Never `git add -A` from the repo root.** Add your own files by path.
 - A conflict in a file you don't own means Rule Zero was broken — **stop and talk to the owner.**
+
+---
+
+## Added during D2's build (branch `D2`)
+
+Phase 0 could not stub what nobody had thought of yet. These paths were created
+while building the order-to-cash lane. **They are listed here so nobody creates
+them a second time** — which is the whole point of this document.
+
+| Path | Owner | Why it exists |
+|---|---|---|
+| `app/api/fulfilment/_stock.ts` | **D2** | DB glue for the split. `lib/allocate.ts` stays pure — no `pg`, no clock — so it can be unit-tested and read aloud; this file loads the numbers and writes back the decision. Not a route: Next only treats `route.ts`/`page.tsx` as routes, so a plain module in a route folder is safe. |
+| `app/api/fulfilment/[id]/{plan,reserve,ship,consolidate}/route.ts` | **D2** | Accept/override the split, reserve with `FOR UPDATE`, ship, consolidate a backorder. |
+| `app/api/fulfilment/stock/route.ts` | **D2** | Goods receipt. §B6's consolidate prompt is triggered by stock *arriving*; without this it could only be demoed by editing the database by hand on stage. |
+| `app/api/orders/[id]/route.ts` | **D2** | One order with everything hanging off it — screens 8 and 10. |
+| `app/api/invoices/[id]/route.ts`, `.../payments/route.ts` | **D2** | Screen 13, and §9's eighth and final step. |
+| `app/api/subscriptions/[id]/{route,change,cancel,invoice}.ts` | **D2** | Proration ledger and billing actions. |
+| `components/billing/format.tsx` | **D2**, temporary | Money/qty/date formatting. **Delete when D3 ships `components/shared/money.tsx`** and change the imports — the signatures match deliberately. |
+| `components/billing/invoice-pdf.ts`, `components/fulfilment/split-plan.tsx` | **D2** | Invoice PDF, and the suggested-split card. |
+| `lib/allocate.test.mjs` | **D2** | 26 hand-run cases for the allocator. `.mjs`, not `.ts`, because Node's ESM loader needs the explicit `./allocate.ts` specifier and tsc rejects that without `allowImportingTsExtensions` — which would mean editing the Integrator's frozen `tsconfig.json`. `.mjs` is outside tsconfig's `include`, so both tools stay happy. Run it with `node --experimental-strip-types lib/allocate.test.mjs`. |
+
+### Notes for other lanes
+
+- **D1 and D3 — `/api/products` and `/api/products/[id]` are built.** The list
+  returns margin %, stock totals and variant counts; the detail returns variants
+  with their option values, tier pricelists with the price already resolved, and
+  per-warehouse stock. Ask for fields rather than adding a second endpoint.
+- **D3 — `components/nav.ts` has no `/settings` entry.** Screen 18 is reachable
+  only by typing the URL. Its own brief says it must be "reachable in two clicks
+  during the demo", and a judge editing a discount ceiling live is a rubric
+  moment. That file is D3's and frozen, so D2 cannot add it.
+- **Integrator — `middleware.ts` is deprecated in Next 16.** Every build prints
+  the `middleware-to-proxy` codemod notice. Harmless today; better decided before
+  the freeze than at 3am.
+- **D3 — TanStack Table in `package.json` is v9, and shadcn's `data-table` recipe
+  is v8.** `useReactTable` is renamed to `useTable` and the row-model factories
+  changed; shadcn has an open compatibility issue for exactly this. Either use
+  `useLegacyTable` from `@tanstack/react-table/legacy` (deprecated, ships every
+  feature) or write against the v9 API — but find out before, not during.
