@@ -71,6 +71,14 @@ const STATUS: Record<string, Entry> = {
   active: { label: 'Active', tone: 'positive' },
   paused: { label: 'Paused', tone: 'progress' },
 
+  // Not database enums: the catalogue and warehouse screens render
+  // `is_active` / `resolved_at` booleans through this same component so that a
+  // derived state never invents its own colour.
+  inactive: { label: 'Inactive', tone: 'muted' },
+  archived: { label: 'Archived', tone: 'muted' },
+  open: { label: 'Open', tone: 'progress' },
+  resolved: { label: 'Resolved', tone: 'positive' },
+
   // risk_band — uppercase in the database, matched case-insensitively below
   low: { label: 'Low', tone: 'positive' },
   medium: { label: 'Medium', tone: 'progress' },

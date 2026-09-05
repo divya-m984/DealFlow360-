@@ -3,10 +3,8 @@
 // four people's screens, so nothing here is per-screen configurable.
 //
 // The customer portal (§7) is a SEPARATE shell owned by D1.  Nothing from NAV
-// appears there.
-//
-// NOT YET BUILT (Phase 3): the demo role switcher.  /api/auth/switch already
-// exists and is implemented; the dropdown is deliberately out of Phase 1 scope.
+// appears there, and the identity switcher below deliberately refuses to switch
+// into a portal identity — see PORTAL EXCLUSION in identity-switcher.tsx.
 'use client'
 
 import Link from 'next/link'
@@ -15,25 +13,20 @@ import { useEffect, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { cn } from 'cn'
 import { NAV } from '@/components/nav'
-
-type Me = { fullName: string; role: string; email: string }
-
-/** Roles are stored as snake_case enums; the chrome shows them as words. */
-function roleLabel(role: string) {
-  return role.replace(/_/g, ' ')
-}
+import { IdentitySwitcher, type Identity } from '@/components/shared/identity-switcher'
+import { Toaster } from '@/components/ui/sonner'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [me, setMe] = useState<Me | null>(null)
+  const [me, setMe] = useState<Identity | null>(null)
 
   useEffect(() => {
     let cancelled = false
     fetch('/api/auth/me')
       .then((r) => (r.ok ? r.json() : null))
       .then((b) => {
-        if (!cancelled && b?.data) setMe(b.data as Me)
+        if (!cancelled && b?.data) setMe(b.data as Identity)
       })
       .catch(() => {})
     return () => {
@@ -81,15 +74,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          <div className="flex shrink-0 items-center gap-3">
-            {me && (
-              <span className="hidden text-right text-xs leading-tight sm:block">
-                <span className="block font-medium">{me.fullName}</span>
-                <span className="block text-nav-foreground/70 capitalize">
-                  {roleLabel(me.role)}
-                </span>
-              </span>
-            )}
+          <div className="flex shrink-0 items-center gap-1">
+            <IdentitySwitcher me={me} />
             <button
               onClick={logout}
               title="Log out"
@@ -105,6 +91,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6">
         {children}
       </main>
+
+      {/* Dark is forced: the app ships one theme, and sonner would otherwise
+          read prefers-color-scheme and render a light toast on a dark page. */}
+      <Toaster theme="dark" position="bottom-right" />
     </div>
   )
 }
