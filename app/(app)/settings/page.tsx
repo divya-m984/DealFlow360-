@@ -25,7 +25,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import type { ConfigPayload } from '@/lib/types/catalog'
 import { SHIPMENT_BASE_COST } from '@/lib/allocate'
 
-const WRITE_ROLES = ['admin', 'finance']
+// MUST MATCH CONFIG_WRITE_ROLES in app/api/config/route.ts.  They drifted once
+// already: the API added 'sales_manager' (PS §3 puts them in charge of screen
+// 18 — "Configures discount tiers and approval chains") and this screen was not
+// updated, so a manager could save via the API but saw a read-only badge and no
+// Save button here.  A client allow-list narrower than the server's is not a
+// security control, it is just a lie to the user about what they may do.
+const WRITE_ROLES = ['admin', 'sales_manager', 'finance']
 
 type PolicyForm = {
   high_band_from: string
