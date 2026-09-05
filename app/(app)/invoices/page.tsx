@@ -3,14 +3,14 @@
 // One-time and recurring invoices in one list.  Payment recording, proration
 // and credit notes are D2's application logic; this screen renders invoice rows.
 //
-// PROVISIONAL CONTRACT.  GET /api/invoices is still a 501 stub owned by D2
-// with no declared response type.  The row shape is derived from `invoice` in
-// db/schema.sql.  `amount_total`, `status`, `issue_date` and `due_date` are
-// real columns; `amount_paid` / `amount_outstanding` are rollups D2 must
-// aggregate from `payment` (there is no stored paid-to-date column), so both
-// are optional here and the outstanding figure falls back to a local
-// subtraction only when the API supplies paid but not outstanding.
-// Only `id` and `status` are treated as required.
+// CONTRACT: matched against the landed GET /api/invoices (D2).  Two Phase 2
+// guesses were wrong and have been corrected:
+//   • the outstanding figure is `amount_due`, not `amount_outstanding`, and it
+//     is computed in SQL as (amount_total - COALESCE(paid, 0))
+//   • `is_overdue` is computed in SQL against CURRENT_DATE, so the screen no
+//     longer compares dates against the browser clock
+// `amount_paid` is SUMmed from `payment` and never stored — see lib/invoice.ts.
+// D3 performs no money arithmetic of its own here.
 'use client'
 
 import { useRouter } from 'next/navigation'
@@ -28,39 +28,23 @@ type InvoiceRow = {
   id: number
   /** invoice_status: 'unpaid' | 'partial' | 'paid' | 'void' */
   status: string
-  number?: string
-  customer_name?: string
+  number: string
+  customer_id: number
+  customer_name: string
+  order_id: number | null
+  order_number: string | null
+  subscription_id: number | null
   /** line_type: 'one_time' | 'recurring' */
-  kind?: string
-  currency_code?: string
-  amount_total?: string | number
-  amount_paid?: string | number
-  amount_outstanding?: string | number
-  issue_date?: string
-  due_date?: string
-}
-
-function Muted() {
-  return <span className="text-muted-foreground">—</span>
-}
-
-/** Prefer the API's own figure; derive only when it sent paid but not outstanding. */
-function outstandingOf(row: InvoiceRow) {
-  if (row.amount_outstanding !== undefined && row.amount_outstanding !== null) {
-    return row.amount_outstanding
-  }
-  if (row.amount_total === undefined || row.amount_paid === undefined) return undefined
-  const total = Number(row.amount_total)
-  const paid = Number(row.amount_paid)
-  return Number.isFinite(total) && Number.isFinite(paid) ? total - paid : undefined
-}
-
-/** Past the due date and still owing — the only row state worth colouring. */
-function isOverdue(row: InvoiceRow) {
-  if (!row.due_date) return false
-  if (row.status === 'paid' || row.status === 'void') return false
-  const due = new Date(row.due_date)
-  return !Number.isNaN(due.getTime()) && due.getTime() < Date.now()
+  kind: string
+  currency_code: string
+  amount_total: string | number
+  /** SUM over `payment`, never stored. */
+  amount_paid: string | number
+  /** amount_total - amount_paid, computed in SQL. */
+  amount_due: string | number
+  is_overdue: boolean
+  issue_date: string
+  due_date: string
 }
 
 const col = createDataTableColumns<InvoiceRow>()
@@ -69,19 +53,23 @@ const columns: DataTableColumns<InvoiceRow> = col.columns([
   col.accessor('number', {
     header: 'Invoice',
     cell: ({ row }) => (
-      <span className="font-medium text-foreground">
-        {row.original.number ?? `#${row.original.id}`}
+      <span className="flex flex-col leading-tight">
+        <span className="font-medium text-foreground">{row.original.number}</span>
+        {row.original.order_number && (
+          <span className="text-xs text-muted-foreground">
+            from {row.original.order_number}
+          </span>
+        )}
       </span>
     ),
   }),
   col.accessor('customer_name', {
     header: 'Customer',
-    cell: ({ row }) => row.original.customer_name ?? <Muted />,
+    cell: ({ row }) => row.original.customer_name,
   }),
   col.accessor('kind', {
     header: 'Kind',
-    cell: ({ row }) =>
-      row.original.kind ? <StatusBadge status={row.original.kind} /> : <Muted />,
+    cell: ({ row }) => <StatusBadge status={row.original.kind} />,
   }),
   col.accessor('status', {
     header: 'Status',
@@ -93,7 +81,7 @@ const columns: DataTableColumns<InvoiceRow> = col.columns([
     cell: ({ row }) => (
       <Money
         value={row.original.amount_total}
-        currency={row.original.currency_code ?? 'INR'}
+        currency={row.original.currency_code}
         className="font-medium"
       />
     ),
@@ -104,27 +92,23 @@ const columns: DataTableColumns<InvoiceRow> = col.columns([
     cell: ({ row }) => (
       <Money
         value={row.original.amount_paid}
-        currency={row.original.currency_code ?? 'INR'}
+        currency={row.original.currency_code}
         className="text-muted-foreground"
       />
     ),
   }),
-  col.display({
-    id: 'outstanding',
+  col.accessor('amount_due', {
     header: 'Outstanding',
     meta: { align: 'right' },
-    cell: ({ row }) => {
-      const value = outstandingOf(row.original)
-      if (value === undefined) return <Muted />
-      const owed = Number(value) > 0
-      return (
-        <Money
-          value={value}
-          currency={row.original.currency_code ?? 'INR'}
-          className={owed ? 'font-medium' : 'text-muted-foreground'}
-        />
-      )
-    },
+    cell: ({ row }) => (
+      <Money
+        value={row.original.amount_due}
+        currency={row.original.currency_code}
+        className={
+          Number(row.original.amount_due) > 0 ? 'font-medium' : 'text-muted-foreground'
+        }
+      />
+    ),
   }),
   col.accessor('issue_date', {
     header: 'Issued',
@@ -138,7 +122,9 @@ const columns: DataTableColumns<InvoiceRow> = col.columns([
       <DateValue
         value={row.original.due_date}
         className={
-          isOverdue(row.original) ? 'font-medium text-red-300' : 'text-muted-foreground'
+          row.original.is_overdue
+            ? 'font-medium text-destructive'
+            : 'text-muted-foreground'
         }
       />
     ),

@@ -23,7 +23,7 @@
 'use client'
 
 import * as React from 'react'
-import { Check, ChevronDown, Loader2, UserRound } from 'lucide-react'
+import { Check, Loader2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from 'cn'
 import {
@@ -133,17 +133,41 @@ export function IdentitySwitcher({ me }: { me: Identity | null }) {
 
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      {/* AVATAR ONLY.  The name and role that used to sit beside it are gone
+          from the bar and now lead the menu instead, so the chrome stays quiet
+          and the identity is still one hover away.
+
+          There is no avatar image to show: the session (lib/jwt.ts `Session`)
+          carries userId / role / email / fullName and no picture, and the users
+          table has no avatar column — so the circle holds initials, which is the
+          usual stand-in and needs no backend change.
+
+          OPENS ON HOVER via Base UI's own `openOnHover`, rather than a hand-
+          rolled mouseenter/leave pair, so the open and close delays also cover
+          the gap between the trigger and the popup.  Click and keyboard still
+          work unchanged — hover is additive, and it has to be: `openOnHover` is
+          pointer-only, so touch users and anyone navigating by keyboard would
+          otherwise have no way in.  The name/role moved into `aria-label` and
+          `title` so neither a screen reader nor a mouse user loses it. */}
       <DropdownMenuTrigger
         disabled={busy}
-        aria-label="Switch identity"
+        openOnHover
+        delay={80}
+        closeDelay={160}
+        aria-label={
+          me
+            ? `Signed in as ${me.fullName}, ${roleLabel(me.role)}. Switch identity`
+            : 'Switch identity'
+        }
+        title={me ? `${me.fullName} · ${roleLabel(me.role)}` : 'Switch identity'}
         className={cn(
-          'inline-flex h-8 max-w-[13rem] items-center gap-2 rounded-md px-1.5 text-left transition-colors',
-          'text-nav-foreground/85 hover:bg-white/10 hover:text-nav-foreground',
+          'inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-colors',
+          'text-nav-foreground hover:bg-white/10',
           'focus-visible:ring-2 focus-visible:ring-nav-foreground/60 outline-none',
           'aria-expanded:bg-white/10 disabled:opacity-60',
         )}
       >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white/15 text-[0.65rem] font-semibold">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white/20 text-[0.65rem] font-semibold ring-1 ring-white/25">
           {busy ? (
             <Loader2 className="size-3 animate-spin" />
           ) : me ? (
@@ -152,22 +176,25 @@ export function IdentitySwitcher({ me }: { me: Identity | null }) {
             <UserRound className="size-3" />
           )}
         </span>
-        {/* The name block is the first thing to go on a narrow bar; the
-            avatar and chevron keep the control reachable at any width. */}
-        <span className="hidden min-w-0 flex-col leading-tight sm:flex">
-          <span className="truncate text-xs font-medium">
-            {me?.fullName ?? 'Signed in'}
-          </span>
-          <span className="truncate text-[0.65rem] text-nav-foreground/70 capitalize">
-            {me ? roleLabel(me.role) : '—'}
-          </span>
-        </span>
-        <ChevronDown className="size-3.5 shrink-0 opacity-70" />
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" sideOffset={6} className="w-72">
-        <DropdownMenuLabel>Switch identity</DropdownMenuLabel>
+      {/* min-w-72 as well as w-72: the popup's base class is
+          `w-(--anchor-width)`, and the anchor is now a 32px circle. */}
+      <DropdownMenuContent align="end" sideOffset={6} className="w-72 min-w-72">
+        {/* Signed-in-as moved here from the bar, so removing the text from the
+            chrome did not remove it from the application. */}
+        <DropdownMenuLabel className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-sm font-medium text-foreground">
+            {me?.fullName ?? 'Signed in'}
+          </span>
+          <span className="truncate text-xs font-normal text-muted-foreground capitalize">
+            {me ? roleLabel(me.role) : '—'}
+          </span>
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs text-muted-foreground">
+          Switch identity
+        </DropdownMenuLabel>
 
         {loadingList && (
           <p className="px-1.5 py-2 text-xs text-muted-foreground">Loading identities…</p>

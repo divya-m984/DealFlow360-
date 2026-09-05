@@ -4,13 +4,12 @@
 // and refund policy are D2's application logic in lib/billing.ts; this screen
 // renders subscription rows and never computes an amount itself.
 //
-// PROVISIONAL CONTRACT.  GET /api/subscriptions is still a 501 stub owned by
-// D2 with no declared response type.  The row shape is derived from
-// `subscription` joined to `subscription_plan` and `customer` in
-// db/schema.sql.  Note that `subscription` has no human-readable `number`
-// column — only `id` and `public_id` — so the reference column shows the real
-// numeric id rather than inventing a document number.
-// Only `id` and `status` are treated as required.
+// CONTRACT: matched against the landed GET /api/subscriptions (D2).  The
+// recurring amount arrives as `period_amount` — `round(sp.price * s.qty, 2)`,
+// computed in SQL — NOT as the `amount` the Phase 2 provisional shape guessed.
+// D3 does not multiply price by qty itself; that stays a server calculation.
+// `subscription` still has no human-readable number column, so the reference
+// column shows the real numeric id rather than inventing a document number.
 'use client'
 
 import { useRouter } from 'next/navigation'
@@ -28,19 +27,24 @@ type SubscriptionRow = {
   id: number
   /** sub_status: 'active' | 'paused' | 'cancelled' */
   status: string
-  customer_name?: string
-  plan_name?: string
+  customer_id: number
+  customer_name: string
+  plan_id: number
+  plan_name: string
   /** billing_cycle: weekly | monthly | quarterly | yearly */
-  cycle?: string
-  qty?: string | number
-  currency_code?: string
-  /** Recurring amount per cycle, as computed by D2. */
-  amount?: string | number
-  current_period_start?: string
-  current_period_end?: string
-  next_bill_date?: string
-  started_at?: string
-  cancelled_at?: string
+  cycle: string
+  plan_price: string | number
+  currency_code: string
+  qty: string | number
+  /** round(plan_price * qty, 2), computed in SQL. */
+  period_amount: string | number
+  current_period_start: string
+  current_period_end: string
+  /** Schema permits this only while active. */
+  next_bill_date: string | null
+  source_order_id: number | null
+  source_order_number: string | null
+  proration_events: number
 }
 
 function Muted() {
@@ -60,16 +64,15 @@ const columns: DataTableColumns<SubscriptionRow> = col.columns([
   }),
   col.accessor('customer_name', {
     header: 'Customer',
-    cell: ({ row }) => row.original.customer_name ?? <Muted />,
+    cell: ({ row }) => row.original.customer_name,
   }),
   col.accessor('plan_name', {
     header: 'Plan',
-    cell: ({ row }) => row.original.plan_name ?? <Muted />,
+    cell: ({ row }) => row.original.plan_name,
   }),
   col.accessor('cycle', {
     header: 'Cadence',
-    cell: ({ row }) =>
-      row.original.cycle ? <StatusBadge status={row.original.cycle} /> : <Muted />,
+    cell: ({ row }) => <StatusBadge status={row.original.cycle} />,
   }),
   col.accessor('status', {
     header: 'Status',
@@ -82,28 +85,25 @@ const columns: DataTableColumns<SubscriptionRow> = col.columns([
       <Num value={row.original.qty} className="text-muted-foreground" />
     ),
   }),
-  col.accessor('amount', {
+  col.accessor('period_amount', {
     header: 'Amount',
     meta: { align: 'right' },
     cell: ({ row }) => (
       <Money
-        value={row.original.amount}
-        currency={row.original.currency_code ?? 'INR'}
+        value={row.original.period_amount}
+        currency={row.original.currency_code}
         className="font-medium"
       />
     ),
   }),
   col.accessor('current_period_end', {
     header: 'Current period',
-    cell: ({ row }) => {
-      const { current_period_start, current_period_end } = row.original
-      if (!current_period_start && !current_period_end) return <Muted />
-      return (
-        <span className="whitespace-nowrap text-muted-foreground tabular-nums">
-          <DateValue value={current_period_start} /> – <DateValue value={current_period_end} />
-        </span>
-      )
-    },
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+        <DateValue value={row.original.current_period_start} /> –{' '}
+        <DateValue value={row.original.current_period_end} />
+      </span>
+    ),
   }),
   col.accessor('next_bill_date', {
     header: 'Next billing',
