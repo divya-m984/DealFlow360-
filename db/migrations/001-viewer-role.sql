@@ -1,0 +1,89 @@
+-- PROPOSED — number 001 is unclaimed as of writing. Claim it in team chat
+-- before applying; if someone else already has 001, renumber this file.
+--
+-- Written by D2, in response to judge feedback: "strengthen RBAC beyond
+-- username/password — give us a viewer, a salesperson, and something else."
+--
+-- ── WHAT ALREADY EXISTS (do not re-derive without checking) ──────────
+-- The judge's ask reads as "add more roles" but the app already has FIVE:
+-- sales_rep, sales_manager, finance, admin, portal (db/schema.sql:10,
+-- lib/jwt.ts Role type) — enforced at TWO layers: middleware.ts hard-blocks
+-- a portal session from ever reaching an internal route (edge, independent
+-- of any single handler), and every route additionally gates on
+-- withAuth([...roles]) for which INTERNAL role may call it. That is already
+-- more than "username and password" and it is demoable today via
+-- components/shared/identity-switcher.tsx (D3), which switches between
+-- real seeded accounts of different roles with no re-typed credentials.
+--
+-- ── THE ACTUAL GAP ────────────────────────────────────────────────────
+-- No existing role is PURELY read-only. sales_rep still writes quotations;
+-- every other internal role has some write surface too. A genuine "viewer" —
+-- sees everything internal, changes nothing, anywhere — does not exist. This
+-- migration adds exactly that one role and nothing else: not a redesign of
+-- the five that already work.
+--
+-- ── WHY THIS IS SAFE AS AN ADD, NOT A REWRITE ────────────────────────
+-- Every route in this app allow-lists roles explicitly
+-- (`withAuth(['finance','admin'], ...)`). A brand-new enum value therefore
+-- starts with ZERO permissions everywhere, by construction, until a route
+-- deliberately adds it. There is no risk of 'viewer' accidentally gaining a
+-- write path the way there would be with a deny-list design — the only work
+-- after this migration is each lane deciding which of ITS OWN GETs to widen,
+-- which is additive and mechanical, not a security review of what to take
+-- away.
+--
+-- ADD VALUE cannot be used in the same transaction that adds it (Postgres
+-- restriction on enum additions), so this migration does ONLY the add — no
+-- seed insert, no BEGIN/COMMIT wrapper. Apply it as its own statement.
+
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'viewer';
+
+-- ── WHAT STILL NEEDS TO HAPPEN, AND WHOSE FILE IT IS ─────────────────
+-- This migration alone changes nothing a user can do — 'viewer' cannot even
+-- be assigned to an app_user row until code understands it. That work is
+-- cross-lane and Rule Zero says D2 does not touch it unannounced:
+--
+--   Integrator, FROZEN, needs sign-off (same pattern as the lib/db.ts DATE
+--   fix earlier this build):
+--     lib/jwt.ts   — Role type: add 'viewer' to the union (one line)
+--     lib/auth.ts  — no change needed; it re-exports the same Role type
+--     middleware.ts — no change needed. Its one special case is `role ===
+--       'portal'`; a viewer sails through the existing internal-vs-portal
+--       gate untouched, exactly like every other internal role.
+--
+--   D4 / Integrator — db/seed/01-identity.sql:
+--     one demo user, e.g. viewer@dealflow.app, role='viewer', team_id NULL.
+--     components/shared/identity-switcher.tsx (D3) needs NO change to show
+--     it — it already filters out only role='portal' and lists everyone
+--     else, so a seeded viewer appears in the demo switcher for free.
+--
+--   Each lane — decide which of ITS OWN GET routes 'viewer' should read.
+--   Full current inventory, gathered so nobody has to re-grep it:
+--
+--     Already withAuth(null, ...) — any internal role, 'viewer' included
+--     automatically, NO EDIT NEEDED:
+--       GET /api/fulfilment, /api/fulfilment/[id], /api/fulfilment/stock
+--       GET /api/invoices, /api/invoices/[id]
+--       GET /api/products, /api/products/[id]
+--       GET /api/orders, /api/orders/[id]
+--       GET /api/subscriptions, /api/subscriptions/[id]
+--       GET /api/config
+--       GET /api/auth/me
+--
+--     Explicit allow-list — needs 'viewer' ADDED if it should be readable:
+--       GET /api/quotations, /api/quotations/[id], /api/deal-alerts
+--         → currently `const INTERNAL = ['sales_rep','sales_manager',
+--           'finance','admin']`, redefined locally in 11 route files (D1's
+--           lane — worth a single shared export while touching this, same
+--           duplication pattern the "too much data duplication" review
+--           flagged elsewhere)
+--       GET /api/approvals, /api/approvals/[id]
+--         → currently ['sales_manager','finance','admin'] — notably
+--           excludes sales_rep too today, so this is a D1 policy call, not
+--           just a viewer omission
+--       GET /api/reports
+--         → currently ['sales_rep','sales_manager','finance','admin']
+--
+--   No route needs 'viewer' EXCLUDED from anything — every POST/PUT/PATCH/
+--   DELETE in the app already names its own allow-list and 'viewer' is
+--   simply absent from all of them unless someone deliberately adds it.
