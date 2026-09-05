@@ -39,12 +39,26 @@ async function nextNumber(c: PoolClient, prefix: string, table: string): Promise
 }
 
 /**
- * Invoice the one-time lines of an order.  PS §B7: one order, two kinds of
- * line, and they are billed by DIFFERENT mechanisms — this is the one-off
- * half.  Recurring lines are billed by their subscription instead.
+ * Invoice the ORDER-POLICY one-time lines of an order, at confirmation.
+ * PS §B7: one order, two kinds of line, billed by different mechanisms —
+ * this is the one-off half.  Recurring lines are billed by their
+ * subscription instead.
  *
- * Returns null when the order has no one-time lines at all, which is a
- * perfectly normal pure-subscription order and not an error.
+ * ⚠ NARROWED for jury review 2, ask 6.  This used to bill EVERY one-time
+ * line the moment the order was created.  That produced an invoice for 100
+ * laptops on an order that could only ship 70 — the exact thing the jury
+ * asked us to stop doing — and it did it before anyone could choose
+ * otherwise, because POST /api/orders calls this automatically.
+ *
+ * It now bills only lines whose product is invoice_policy='order' (services,
+ * warranties — things that do not ship and are earned on commitment).
+ * Goods are invoice_policy='delivery' and are billed by
+ * createDeliveryInvoice() as they actually ship.  This is Odoo's split, and
+ * it is a property of the product rather than a decision taken per order.
+ *
+ * Returns null when the order has no order-policy one-time lines, which is
+ * entirely normal — a pure-hardware order bills nothing at confirmation —
+ * and is not an error.
  */
 export async function createOrderInvoice(
   c: PoolClient,
@@ -58,20 +72,20 @@ export async function createOrderInvoice(
   if (ord.rowCount === 0) throw new Error(`No order with id ${orderId}`)
   const o = ord.rows[0]
 
-  const existing = await c.query(
-    `SELECT id FROM invoice WHERE order_id = $1 AND kind = 'one_time'`,
-    [orderId],
-  )
-  if (existing.rowCount && existing.rowCount > 0) {
-    throw new Error(`Order ${o.number} has already been invoiced for its one-time lines.`)
-  }
-
+  // Only lines that have not been billed yet.  The old blanket "has this
+  // order any one_time invoice?" guard is gone: with partial invoicing an
+  // order legitimately has several, and that guard would have refused every
+  // one after the first.  qty_invoiced is the real, per-line record of what
+  // has been billed, so it is what we check.
   const lines = await c.query(
     `SELECT sol.id, p.name, sol.qty, sol.unit_price, sol.net_amount
        FROM sales_order_line sol
        JOIN quotation_line ql ON ql.id = sol.quotation_line_id
        JOIN product p ON p.id = sol.product_id
-      WHERE sol.order_id = $1 AND ql.line_type = 'one_time'
+      WHERE sol.order_id = $1
+        AND ql.line_type = 'one_time'
+        AND p.invoice_policy = 'order'
+        AND sol.qty_invoiced < sol.qty
       ORDER BY sol.id`,
     [orderId],
   )
@@ -90,9 +104,16 @@ export async function createOrderInvoice(
 
   for (const l of lines.rows) {
     await c.query(
-      `INSERT INTO invoice_line (invoice_id, description, qty, unit_price, amount)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [inv.rows[0].id, l.name, l.qty, l.unit_price, l.net_amount],
+      `INSERT INTO invoice_line (invoice_id, order_line_id, description, qty, unit_price, amount)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [inv.rows[0].id, l.id, l.name, l.qty, l.unit_price, l.net_amount],
+    )
+    // Keeps qty_invoiced authoritative across BOTH invoicing paths.  Without
+    // this, a later createDeliveryInvoice() would see qty_invoiced = 0 on a
+    // service line and bill it a second time.
+    await c.query(
+      `UPDATE sales_order_line SET qty_invoiced = qty WHERE id = $1`,
+      [l.id],
     )
   }
 

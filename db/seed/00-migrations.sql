@@ -169,10 +169,12 @@ ALTER TABLE product
   ADD COLUMN IF NOT EXISTS invoice_policy text NOT NULL DEFAULT 'delivery'
     CHECK (invoice_policy IN ('order','delivery'));
 
--- Services and subscriptions bill on order, not on shipment.  Written as an
--- UPDATE keyed on category rather than a per-SKU list so it stays correct
--- when 07-mobility.sql (or anyone else) adds products later.
-UPDATE product SET invoice_policy = 'order'
- WHERE invoice_policy <> 'order'
-   AND (is_subscription
-        OR category_id IN (SELECT id FROM product_category WHERE code IN ('services','subscription')));
+-- The DATA half of this change — marking services and subscriptions as
+-- 'order' — deliberately lives in 09-backfill.sql, NOT here.  This file runs
+-- before 02-catalog.sql, so an UPDATE here would run against an empty
+-- product table, succeed, report "UPDATE 0", and leave every service on the
+-- 'delivery' default.  A service never ships, so it would then compute
+-- qty_shipped = 0 forever and become silently unbillable.
+--
+-- That is exactly the bug this comment exists to stop someone re-introducing
+-- by "tidying" the UPDATE back up next to its ALTER TABLE.

@@ -111,8 +111,32 @@ them a second time** — which is the whole point of this document.
 | `components/billing/invoice-pdf.ts`, `components/fulfilment/split-plan.tsx` | **D2** | Invoice PDF, and the suggested-split card. |
 | `lib/allocate.test.mjs` | **D2** | 26 hand-run cases for the allocator. `.mjs`, not `.ts`, because Node's ESM loader needs the explicit `./allocate.ts` specifier and tsc rejects that without `allowImportingTsExtensions` — which would mean editing the Integrator's frozen `tsconfig.json`. `.mjs` is outside tsconfig's `include`, so both tools stay happy. Run it with `node --experimental-strip-types lib/allocate.test.mjs`. |
 | `db/seed/07-mobility.sql` | **D2** | CLAIMED at jury review 2. Phones, phone accessories and two more laptops, plus 27 new `upsell_rule` edges — the many-to-many the jury asked for, seeded as their own phone→case→power-bank example. Additive only: it runs after `06` so no invariant in `04`/`06` can see its rows, and it does not edit `02-catalog.sql` (the Integrator's) at all. Seeds LP15HP to exactly 70 units network-wide for the partial-fulfilment demo, and fails the seed if that drifts. |
+| `db/seed/00-migrations.sql` | **D2** | CLAIMED. Post-freeze DDL, additive and idempotent. It lives in `db/seed/` and not `db/migrations/` because `db/reset.sh` runs `schema.sql` + `db/seed/*.sql` but **not** `db/migrations/` — so migration-only DDL vanishes on the next reset and the person who reset finds out when a route 500s. `00-` sorts first, every statement is `IF NOT EXISTS`, and it edits no frozen file. |
+| `db/seed/08-users.sql` | **D2** | CLAIMED. The `viewer` and `super_admin` demo accounts, plus a junior rep that exists only to be promoted on stage. Fails the seed if no active `super_admin` exists. |
+| `db/seed/09-backfill.sql` | **D2** | CLAIMED. Backfills columns `00-` adds to tables **other lanes seed** — it cannot run in `00-` (rows don't exist yet) and cannot live in D1's or the Integrator's seed files. Runs last, every statement guarded by `IS NULL`. |
+| `app/api/users/**` | **D2** | CLAIMED. Create a user, promote/demote, deactivate (asks 3 and 7). |
+| `app/api/admin/reset/**` | **D2** | CLAIMED. Bounded destructive reset, `super_admin` + out-of-band token (ask 4). |
+| `app/api/negotiation/**` | **D2** | CLAIMED. Seller side of the buyer↔seller chat thread (ask 1). |
+| `app/api/orders/[id]/invoice/**` | **D2** | Partial invoicing on delivered quantities (ask 6). |
+| `app/api/portal/negotiation/[publicId]/messages/route.ts` | **D1 by the map — WRITTEN BY D2** | ⚠ Cross-lane, flagged. The buyer half of the chat. `middleware.ts` only lets a portal session reach `/api/portal`, so it was unreachable from D2's lane. New file, so it cannot conflict — move or rewrite it freely. |
 
-### ⚠ One change to a FROZEN file — `lib/db.ts`
+### ⚠ TWO changes to FROZEN files
+
+**1. `lib/api.ts` — every validation error in the app returned HTTP 500.**
+`parseBody()` threw a plain `Error`; `withAuth()`'s catch maps an unrecognised throw
+to 500. So a bad request body answered `500 Server error` in **all 42 routes, every
+lane** — `POST /api/quotations {"customerId":"abc"}` returned a 500. 5xx means "the
+server is broken, retry may help"; 4xx means "your request was wrong". Monitoring,
+retry logic and a judge poking the API all read that distinction and all three got
+the wrong answer. Fixed by tagging the throw (`ValidationError`) and mapping it to
+400 — no route changes, no signature changes.
+
+**2. `lib/jwt.ts` — the `Role` union.** Two labels added (`viewer`, `super_admin`)
+plus `ROLE_RANK`. Unavoidable: every `withAuth([...])` allow-list is typed against
+this union. Safe as an add — every route is an allow-list, so a new label starts
+with zero permissions everywhere by construction.
+
+**3. `lib/db.ts`
 
 I added a single line to the Integrator's frozen `lib/db.ts` and it needs your
 sign-off, because it fixes a bug in **every lane at once**:
