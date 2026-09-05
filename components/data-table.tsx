@@ -221,7 +221,16 @@ export function DataTable<T extends RowData>({
             placeholder={filterPlaceholder}
             aria-label={filterPlaceholder}
             className="pl-8"
-            disabled={loading}
+            // NOT `disabled={loading}`.  useListData starts loading=true, so
+            // the server renders this input with disabled="" — but its fetch
+            // effect has already flipped loading to false by the time React
+            // hydrates, so the client's first render disagrees with the server
+            // HTML on exactly this attribute. That is a hydration mismatch, and
+            // React reported it on every list screen.
+            //
+            // Disabling it bought nothing anyway: the box is inert for a few
+            // milliseconds, and typing into it early is harmless — the filter
+            // simply applies to the rows once they arrive.
           />
         </div>
         {toolbar}
