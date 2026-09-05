@@ -1,0 +1,22 @@
+-- OWNER: D1.
+-- Quotations, lines, approval requests, negotiation, audit log, deal alerts.
+--
+-- SHIP THIS EARLY.  D2 and D3 are both blocked on having quotations to read —
+-- seeded rows are what let three lanes run in parallel instead of in sequence.
+--
+-- Must contain, at minimum:
+--   • one quotation in EVERY kanban column (draft, pending_approval, approved,
+--     negotiation, confirmed) — screen 3 is empty otherwise
+--   • Q-1042 (Acme Corp, Gold) with the PS §10 worked example:
+--       Laptop Pro 14 @ 12% against a 15% limit  → fine
+--       Onsite Setup  @ 18% against a 10% limit  → 8 points over
+--   • one quotation with last_activity_at 9 days ago      → screen 14 stalled
+--   • one quotation at 22% where the rep average is 8%    → screen 14 anomaly
+--   • approval_request rows: one pending manager, one pending finance,
+--     one already approved
+--
+-- Remember: over_by_pct / net_amount / margin_amount are GENERATED columns.
+-- Do not insert into them.
+BEGIN;
+-- TODO(D1)
+COMMIT;

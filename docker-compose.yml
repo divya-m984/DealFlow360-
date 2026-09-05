@@ -1,0 +1,24 @@
+# DealFlow360 — local Postgres.  OWNER: Integrator.  FROZEN after Phase 0.
+#   docker compose up -d      start
+#   ./db/reset.sh             drop, apply schema, seed
+services:
+  db:
+    image: postgres:17
+    container_name: dealflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dealflow
+      POSTGRES_PASSWORD: dealflow
+      POSTGRES_DB: dealflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - dealflow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dealflow -d dealflow"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  dealflow-pgdata:
