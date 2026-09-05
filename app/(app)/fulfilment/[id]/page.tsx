@@ -22,7 +22,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SplitPlan, type Plan } from '@/components/fulfilment/split-plan'
 import { SHIPMENT_BASE_COST } from '@/lib/allocate'
-import { Money, money, qty as fq, date as fd } from '@/components/billing/format'
+import { Money } from '@/components/shared/money'
+import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
+import { EmptyState } from '@/components/shared/empty-state'
+import {qty as fq, date as fd } from '@/components/billing/format'
 
 type StockRow = {
   warehouseId: number; warehouseCode?: string; warehouseName?: string
@@ -89,8 +93,7 @@ export default function OrderFulfilmentPage() {
   if (error && !fx) {
     return (
       <div className="p-6">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button className="mt-3" variant="outline" onClick={load}>Try again</Button>
+        <ErrorState error={error} onRetry={load} />
       </div>
     )
   }
@@ -117,9 +120,7 @@ export default function OrderFulfilmentPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={fx.state === 'fulfilled' ? 'secondary' : fx.state === 'backorder' ? 'destructive' : 'outline'}>
-            {String(fx.state).replace('_', ' ')}
-          </Badge>
+          <StatusBadge status={fx.state} />
           <span className="text-lg font-semibold"><Money value={fx.grand_total} currency={cur} /></span>
         </div>
       </div>
@@ -163,9 +164,11 @@ export default function OrderFulfilmentPage() {
           </div>
 
           {stockLines.length === 0 && (
-            <Card><CardContent className="py-6 text-sm text-muted-foreground">
-              Nothing on this order is stock-managed. Services and subscriptions are held in no
-              warehouse, so they are never split — they are fulfilled on confirmation.
+            <Card><CardContent className="p-0">
+              <EmptyState
+                title="Nothing to split"
+                description="Nothing on this order is stock-managed. Services and subscriptions are held in no warehouse, so they are never split — they are fulfilled on confirmation."
+              />
             </CardContent></Card>
           )}
 
@@ -236,10 +239,10 @@ export default function OrderFulfilmentPage() {
                             <TableRow key={a.id}>
                               <TableCell>
                                 {a.warehouse_name}
-                                {a.is_manual_override && <Badge variant="outline" className="ml-2">manual</Badge>}
+                                {a.is_manual_override && <StatusBadge status="manual" label="manual" className="ml-2" />}
                               </TableCell>
                               <TableCell className="text-right tabular-nums">{fq(a.qty)}</TableCell>
-                              <TableCell><Badge variant={a.status === 'shipped' ? 'secondary' : 'outline'}>{a.status}</Badge></TableCell>
+                              <TableCell><StatusBadge status={a.status} /></TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -309,7 +312,7 @@ export default function OrderFulfilmentPage() {
               </CardHeader>
               <CardContent>
                 {oneTime.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No one-time lines on this order.</p>
+                  <EmptyState title="No one-time lines" description="Everything on this order is billed on a recurring cycle." />
                 ) : (
                   <Table>
                     <TableHeader>
@@ -348,7 +351,7 @@ export default function OrderFulfilmentPage() {
               </CardHeader>
               <CardContent>
                 {recurring.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No recurring lines on this order.</p>
+                  <EmptyState title="No recurring lines" description="Everything on this order is billed once, up front." />
                 ) : (
                   <Table>
                     <TableHeader>
@@ -394,7 +397,7 @@ export default function OrderFulfilmentPage() {
             </CardHeader>
             <CardContent>
               {!ord?.invoices?.length ? (
-                <p className="text-sm text-muted-foreground">No invoices raised yet.</p>
+                <EmptyState title="No invoices yet" description="Invoices are raised when the order is created." />
               ) : (
                 <Table>
                   <TableHeader>
@@ -411,12 +414,10 @@ export default function OrderFulfilmentPage() {
                         <TableCell>
                           <Link className="underline underline-offset-2" href={`/invoices/${i.id}`}>{i.number}</Link>
                         </TableCell>
-                        <TableCell><Badge variant="outline">{i.kind === 'one_time' ? 'one-time' : 'recurring'}</Badge></TableCell>
+                        <TableCell><StatusBadge status={i.kind} /></TableCell>
                         <TableCell className="text-right"><Money value={i.amount_total} currency={cur} /></TableCell>
                         <TableCell className="text-right"><Money value={i.amount_paid} currency={cur} /></TableCell>
-                        <TableCell>
-                          <Badge variant={i.status === 'paid' ? 'secondary' : i.status === 'partial' ? 'outline' : 'destructive'}>{i.status}</Badge>
-                        </TableCell>
+                        <TableCell><StatusBadge status={i.status} /></TableCell>
                         <TableCell>{fd(i.due_date)}</TableCell>
                       </TableRow>
                     ))}

@@ -15,7 +15,11 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Money, qty as fq, date as fd } from '@/components/billing/format'
+import { Money } from '@/components/shared/money'
+import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
+import { EmptyState } from '@/components/shared/empty-state'
+import {qty as fq, date as fd } from '@/components/billing/format'
 import { downloadInvoicePdf } from '@/components/billing/invoice-pdf'
 
 const PAY_ROLES = ['finance', 'admin']
@@ -62,8 +66,7 @@ export default function InvoiceDetailPage() {
   if (error && !inv) {
     return (
       <div className="p-6">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button className="mt-3" variant="outline" onClick={load}>Try again</Button>
+        <ErrorState error={error} onRetry={load} />
       </div>
     )
   }
@@ -88,12 +91,8 @@ export default function InvoiceDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={inv.kind === 'one_time' ? 'outline' : 'secondary'}>
-            {inv.kind === 'one_time' ? 'one-time' : 'recurring'}
-          </Badge>
-          <Badge variant={inv.status === 'paid' ? 'secondary' : inv.status === 'partial' ? 'outline' : 'destructive'}>
-            {inv.status}
-          </Badge>
+          <StatusBadge status={inv.kind} />
+          <StatusBadge status={inv.status} />
           <Button variant="outline" onClick={() => downloadInvoicePdf(inv)}>Download PDF</Button>
         </div>
       </div>
@@ -207,7 +206,7 @@ export default function InvoiceDetailPage() {
           <CardHeader><CardTitle className="text-base">Payments</CardTitle></CardHeader>
           <CardContent>
             {inv.payments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nothing received yet.</p>
+              <EmptyState title="Nothing received yet" description="Recording a payment here is what moves the invoice status." />
             ) : (
               <Table>
                 <TableHeader>

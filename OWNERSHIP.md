@@ -107,7 +107,7 @@ them a second time** — which is the whole point of this document.
 | `app/api/orders/[id]/route.ts` | **D2** | One order with everything hanging off it — screens 8 and 10. |
 | `app/api/invoices/[id]/route.ts`, `.../payments/route.ts` | **D2** | Screen 13, and §9's eighth and final step. |
 | `app/api/subscriptions/[id]/{route,change,cancel,invoice,pause,resume}/route.ts` | **D2** | Proration ledger and the full billing lifecycle. `pause`/`resume` close out `sub_status = 'paused'` and `event_type = 'reactivate'`, which the schema declared and nothing implemented. |
-| `components/billing/format.tsx` | **D2**, temporary | Money/qty/date formatting. **Delete when D3 ships `components/shared/money.tsx`** and change the imports — the signatures match deliberately. |
+| `components/billing/format.tsx` | **D2** | `qty()` and the two date helpers only. The money formatter that used to live here is gone — D2's screens now use D3's `components/shared/money.tsx`, along with `StatusBadge`, `ErrorState` and `EmptyState`. |
 | `components/billing/invoice-pdf.ts`, `components/fulfilment/split-plan.tsx` | **D2** | Invoice PDF, and the suggested-split card. |
 | `lib/allocate.test.mjs` | **D2** | 26 hand-run cases for the allocator. `.mjs`, not `.ts`, because Node's ESM loader needs the explicit `./allocate.ts` specifier and tsc rejects that without `allowImportingTsExtensions` — which would mean editing the Integrator's frozen `tsconfig.json`. `.mjs` is outside tsconfig's `include`, so both tools stay happy. Run it with `node --experimental-strip-types lib/allocate.test.mjs`. |
 
@@ -152,6 +152,10 @@ is deliberately untouched — those really are instants and UTC is right for the
   returns margin %, stock totals and variant counts; the detail returns variants
   with their option values, tier pricelists with the price already resolved, and
   per-warehouse stock. Ask for fields rather than adding a second endpoint.
+- **D3 — thanks for `components/shared/**`; all five D2 screens are on it now**
+  (`Money`, `StatusBadge`, `ErrorState`, `EmptyState`). If you add a status value,
+  add it to your map and D2 picks it up for free. One gap: `manual` and
+  `inactive` fall through to the neutral tone — add them when convenient.
 - **D3 — `components/nav.ts` has no `/settings` entry.** Screen 18 is reachable
   only by typing the URL. Its own brief says it must be "reachable in two clicks
   during the demo", and a judge editing a discount ceiling live is a rubric
