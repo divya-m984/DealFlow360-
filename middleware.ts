@@ -4,8 +4,18 @@
 // Never import lib/auth.ts here — bcryptjs will not run on Edge.
 //
 // This is where PS §7's "real, separate, restricted view" is enforced:
-// a portal session cannot reach an internal route, and an internal session
-// cannot reach the portal.  Both refusals are demonstrable on stage.
+// a portal session cannot reach an internal route.  That refusal is
+// demonstrable on stage — paste an internal URL into the portal browser.
+//
+// The reverse is DELIBERATELY allowed: an internal user can open /portal, so a
+// rep can see exactly what the buyer sees without a second browser profile.
+// If you ever want that closed too, it is one more branch here — but it costs
+// you that demo move.
+//
+// Middleware is only half of the restriction.  It proves the caller is *a*
+// portal user; it does not prove the record belongs to them.  Row scoping —
+// session.customerId === quotation.customer_id — lives in the portal handlers
+// and is D1's to enforce on every request.
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { COOKIE, verifyToken } from '@/lib/jwt'

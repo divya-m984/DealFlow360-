@@ -15,17 +15,17 @@ created twice** — which is what stops two people inventing the same file and c
 | `app/(auth)/**`, `app/api/auth/**` | **Integrator** — frozen |
 | `db/migrations/NNN-*.sql` | claimed per file |
 | `lib/types/quotation.ts`, `lib/risk.ts`, `lib/approval.ts`, `lib/quotation.ts` | **D1** |
-| `app/api/quotations/**`, `app/api/approvals/**`, `app/api/portal/**` | **D1** |
+| `app/api/quotations/**`, `app/api/approvals/**`, `app/api/portal/**`, `app/api/deal-alerts/**` | **D1** |
 | `app/(app)/quotations/[id]/**`, `app/(app)/approvals/[id]/**`, `app/(portal)/**` | **D1** |
 | `components/quotation/**`, `db/seed/05-quotations.sql` | **D1** |
 | `lib/types/order.ts`, `lib/types/catalog.ts`, `lib/allocate.ts`, `lib/billing.ts`, `lib/invoice.ts` | **D2** |
-| `app/api/orders/**`, `app/api/fulfilment/**`, `app/api/subscriptions/**`, `app/api/invoices/**`, `app/api/config/**` | **D2** |
-| `app/(app)/fulfilment/[id]/**`, `app/(app)/subscriptions/[id]/**`, `app/(app)/invoices/[id]/**`, `app/(app)/settings/**` | **D2** |
+| `app/api/orders/**`, `app/api/fulfilment/**`, `app/api/subscriptions/**`, `app/api/invoices/**`, `app/api/config/**`, `app/api/products/**` | **D2** |
+| `app/(app)/fulfilment/[id]/**`, `app/(app)/subscriptions/[id]/**`, `app/(app)/invoices/[id]/**`, `app/(app)/products/[id]/**`, `app/(app)/settings/**` | **D2** |
 | `components/fulfilment/**`, `components/billing/**`, `db/seed/04-stock.sql`, `db/seed/06-orders.sql` | **D2** |
 | `app/(app)/layout.tsx`, `app/globals.css`, `components/nav.ts` | **D3** |
 | `components/ui/**`, `components/shared/**`, `components/data-table.tsx` | **D3** |
 | **All `app/(app)/*/page.tsx`** (list screens) + `app/(app)/page.tsx` | **D3** |
-| `db/seed/*.csv`, `docs/**`, `app/(app)/reports/**` | **D4** |
+| `db/seed/*.csv`, `docs/**`, `app/(app)/reports/**`, `app/api/reports/**` | **D4** |
 
 ### The rule that removes the last of the risk
 
