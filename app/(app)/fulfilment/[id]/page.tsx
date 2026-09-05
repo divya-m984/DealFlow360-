@@ -22,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SplitPlan, type Plan } from '@/components/fulfilment/split-plan'
+import { ConcurrencyProbe } from '@/components/fulfilment/concurrency-probe'
 import { SHIPMENT_BASE_COST } from '@/lib/allocate'
 import { Money } from '@/components/shared/money'
 import { InvoicePanel } from '@/components/billing/invoice-panel'
@@ -331,9 +332,14 @@ export default function OrderFulfilmentPage() {
               </Card>
             )
           })}
+
+          {/* The reservation race, runnable by whoever is watching.  Gated to
+              the same roles that may reserve, because it really does reserve. */}
+          {canFulfil && <ConcurrencyProbe orderId={Number(id)} onDone={load} />}
         </TabsContent>
 
         {/* ───────────────────────── SCREEN 10 ──────────────────────── */}
+
         <TabsContent value="billing" className="space-y-4 pt-4">
           {/* Jury review 2, ask 6.  Bill what has actually shipped, then bill
               the rest when the backorder is consolidated.  canFulfil already

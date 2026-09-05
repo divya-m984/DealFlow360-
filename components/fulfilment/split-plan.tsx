@@ -9,6 +9,27 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Money } from '@/components/shared/money'
 import { qty } from '@/components/billing/format'
+import { SearchTracePanel } from './search-trace'
+
+export type SearchCandidate = {
+  warehouseCodes: string[]
+  size: number
+  capacity: number
+  cost: number
+  feasible: boolean
+  chosen: boolean
+  verdict: 'chosen' | 'cannot_cover' | 'more_shipments' | 'costlier'
+}
+
+export type SearchTrace = {
+  warehousesConsidered: number
+  combinationsEvaluated: number
+  feasibleCombinations: number
+  minShipments: number
+  chosenCost: number
+  greedy: { warehouseCodes: string[]; cost: number; shipments: number } | null
+  top: SearchCandidate[]
+}
 
 export type Plan = {
   allocations: { warehouseId: number; warehouseCode?: string; warehouseName?: string; qty: number; shippingCost: number }[]
@@ -17,6 +38,7 @@ export type Plan = {
   totalShippingCost: number
   strategy: 'single_warehouse' | 'min_shipments' | 'greedy_fallback' | 'backorder_only'
   reason: string
+  search?: SearchTrace
 }
 
 const STRATEGY_LABEL: Record<Plan['strategy'], string> = {
@@ -64,6 +86,7 @@ export function SplitPlan({ plan, currency }: { plan: Plan; currency?: string })
       )}
 
       <p className="text-xs text-muted-foreground">{plan.reason}</p>
+      {plan.search && <SearchTracePanel trace={plan.search} currency={currency} />}
     </div>
   )
 }
