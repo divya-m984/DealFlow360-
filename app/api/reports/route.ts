@@ -21,18 +21,24 @@ export const GET = withAuth(['sales_rep', 'sales_manager', 'finance', 'admin'], 
   // If the logged in user is a rep and wants rep-scoping, they can see their own or their team's,
   // but let's support general filter query
   if (repId) {
-    params.push(parseInt(repId, 10))
-    conditions.push(`quo.owner_user_id = $${params.length}`)
+    const parsed = parseInt(repId, 10)
+    if (!isNaN(parsed)) {
+      params.push(parsed)
+      conditions.push(`quo.owner_user_id = $${params.length}`)
+    }
   }
 
   if (teamId) {
-    params.push(parseInt(teamId, 10))
-    conditions.push(`u.team_id = $${params.length}`)
+    const parsed = parseInt(teamId, 10)
+    if (!isNaN(parsed)) {
+      params.push(parsed)
+      conditions.push(`u.team_id = $${params.length}`)
+    }
   }
 
   if (status && status !== 'all') {
     params.push(status)
-    conditions.push(`quo.state = $${params.length}`)
+    conditions.push(`quo.state::text = $${params.length}`)
   }
 
   if (period === 'today') {
@@ -46,12 +52,15 @@ export const GET = withAuth(['sales_rep', 'sales_manager', 'finance', 'admin'], 
   }
 
   if (categoryId) {
-    params.push(parseInt(categoryId, 10))
-    conditions.push(`EXISTS (
-      SELECT 1 FROM quotation_line ql
-      JOIN product p ON p.id = ql.product_id
-      WHERE ql.quotation_id = quo.id AND p.category_id = $${params.length}
-    )`)
+    const parsed = parseInt(categoryId, 10)
+    if (!isNaN(parsed)) {
+      params.push(parsed)
+      conditions.push(`EXISTS (
+        SELECT 1 FROM quotation_line ql
+        JOIN product p ON p.id = ql.product_id
+        WHERE ql.quotation_id = quo.id AND p.category_id = $${params.length}
+      )`)
+    }
   }
 
   const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''

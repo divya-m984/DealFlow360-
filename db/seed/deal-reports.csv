@@ -1,8 +1,0 @@
-quotation_number,customer_name,rep_email,sales_team,state,currency,subtotal,discount_total,grand_total,margin_total,risk_score,risk_band
-Q-2026-001,Acme Corp,rep@dealflow.app,west,confirmed,INR,150000.00,15000.00,135000.00,42000.00,8.50,LOW
-Q-2026-002,Beta Industries,rep@dealflow.app,west,approved,INR,240000.00,36000.00,204000.00,58000.00,16.20,MEDIUM
-Q-2026-003,Nova Retail,rep2@dealflow.app,west,pending_approval,INR,420000.00,92000.00,328000.00,72000.00,24.50,HIGH
-Q-2026-004,Zenith Co,rep3@dealflow.app,east,confirmed,INR,310000.00,31000.00,279000.00,88000.00,10.00,LOW
-Q-2026-005,Orion Ltd,rep3@dealflow.app,east,negotiation,INR,180000.00,22000.00,158000.00,39000.00,12.20,MEDIUM
-Q-2026-006,Delta LLC,rep2@dealflow.app,west,draft,INR,95000.00,4500.00,90500.00,26000.00,4.70,LOW
-
