@@ -3,13 +3,15 @@
 // Products, their variants and their list price.  Pricelist rules, upsell
 // rules and stock movement are D2's; this screen renders catalogue rows.
 //
-// PROVISIONAL CONTRACT.  GET /api/products is still a 501 stub owned by D2
-// with no declared response type, and it is read by D1's quotation builder as
-// well as this screen — so the payload is D2's to define, not D3's.  The row
-// shape is derived from `product` in db/schema.sql joined to
-// `product_category`, plus two rollups: `variant_count` over `product_variant`
-// and `qty_available` from the `product_stock` view that already exists in the
-// schema.  Only `id`, `sku` and `name` are treated as required.
+// CONTRACT: matched against the landed GET /api/products (D2).  The Phase 2
+// field guesses were all correct, but the payload carries one field the screen
+// was missing and genuinely needs: `is_stock_managed`.
+//
+// `qty_available` is COALESCEd to 0 for any product with no `stock_level` rows,
+// so a service or subscription product that is not stocked at all comes back as
+// 0 — indistinguishable from a stocked product that has sold out.  Painting
+// that red would report a shortage that does not exist, so the Available column
+// checks `is_stock_managed` first and shows "—" for unstocked products.
 'use client'
 
 import { useRouter } from 'next/navigation'
@@ -27,18 +29,25 @@ type ProductRow = {
   id: number
   sku: string
   name: string
-  category_name?: string
-  currency_code?: string
-  base_price?: string | number
-  unit?: string
-  tax_pct?: string | number
-  is_subscription?: boolean
+  category_id: number
+  category_name: string
+  category_max_discount_pct: string | number
+  currency_code: string
+  base_price: string | number
+  cost: string | number
+  margin_pct: string | number | null
+  unit: string
+  tax_pct: string | number
+  is_subscription: boolean
   /** billing_cycle, present only when is_subscription is true. */
-  recurring_cycle?: string
-  is_active?: boolean
-  variant_count?: number
-  /** Summed across warehouses — the `product_stock` view in db/schema.sql. */
-  qty_available?: string | number
+  recurring_cycle: string | null
+  is_active: boolean
+  variant_count: number
+  /** Summed across warehouses; 0 for anything with no stock_level rows. */
+  qty_on_hand: string | number
+  qty_available: string | number
+  /** False when the product has no stock_level rows at all — see header. */
+  is_stock_managed: boolean
 }
 
 function Muted() {
@@ -61,14 +70,13 @@ const columns: DataTableColumns<ProductRow> = col.columns([
   }),
   col.accessor('category_name', {
     header: 'Category',
-    cell: ({ row }) => row.original.category_name ?? <Muted />,
+    cell: ({ row }) => row.original.category_name,
   }),
   col.display({
     id: 'billing',
     header: 'Billing',
     cell: ({ row }) => {
       const { is_subscription, recurring_cycle } = row.original
-      if (is_subscription === undefined) return <Muted />
       if (!is_subscription) return <StatusBadge status="one_time" />
       return (
         <span className="inline-flex items-center gap-1.5">
@@ -88,19 +96,16 @@ const columns: DataTableColumns<ProductRow> = col.columns([
     cell: ({ row }) => (
       <Money
         value={row.original.base_price}
-        currency={row.original.currency_code ?? 'INR'}
+        currency={row.original.currency_code}
         className="font-medium"
       />
     ),
   }),
   col.accessor('unit', {
     header: 'Unit',
-    cell: ({ row }) =>
-      row.original.unit ? (
-        <span className="text-muted-foreground">{row.original.unit}</span>
-      ) : (
-        <Muted />
-      ),
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{row.original.unit}</span>
+    ),
   }),
   col.accessor('tax_pct', {
     header: 'Tax',
@@ -120,19 +125,24 @@ const columns: DataTableColumns<ProductRow> = col.columns([
     header: 'Available',
     meta: { align: 'right' },
     cell: ({ row }) => {
-      const qty = row.original.qty_available
-      if (qty === undefined || qty === null) return <Muted />
-      // Nothing sellable is an operational fact, not a styling flourish.
-      const out = Number(qty) <= 0
-      return <Num value={qty} className={out ? 'font-medium text-red-300' : undefined} />
+      // Not stocked at all is not the same as sold out — see the file header.
+      if (!row.original.is_stock_managed) {
+        return <Muted />
+      }
+      const out = Number(row.original.qty_available) <= 0
+      return (
+        <Num
+          value={row.original.qty_available}
+          className={out ? 'font-medium text-destructive' : undefined}
+        />
+      )
     },
   }),
   col.accessor('is_active', {
     header: 'Status',
-    cell: ({ row }) => {
-      if (row.original.is_active === undefined) return <Muted />
-      return <StatusBadge status={row.original.is_active ? 'active' : 'inactive'} />
-    },
+    cell: ({ row }) => (
+      <StatusBadge status={row.original.is_active ? 'active' : 'inactive'} />
+    ),
   }),
 ])
 

@@ -211,8 +211,18 @@ export function DataTable<T extends RowData>({
   }
 
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="flex flex-wrap items-center gap-2">
+    // ONE ENCLOSED PANEL, three bands.  The toolbar and the pager used to float
+    // outside the card, so a list read as three loose objects; enclosing them
+    // and dividing with rules makes the screen one component with a control
+    // strip, a body and a status bar — the shape every mature CRM list uses.
+    <div
+      className={cn(
+        'overflow-hidden rounded-lg border border-border bg-card',
+        className,
+      )}
+    >
+      {/* Control band */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <div className="relative w-full max-w-xs">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -224,15 +234,12 @@ export function DataTable<T extends RowData>({
             disabled={loading}
           />
         </div>
-        {toolbar}
-        {!loading && (
-          <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-            {totalRows} {totalRows === 1 ? 'row' : 'rows'}
-          </span>
-        )}
+        {toolbar && <div className="ml-auto flex items-center gap-2">{toolbar}</div>}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
+      {/* Body band.  Scrolls horizontally on its own rather than being clipped
+          by the panel, so a wide table stays reachable. */}
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             {headerGroups.map((group) => (
@@ -258,8 +265,13 @@ export function DataTable<T extends RowData>({
                             ? 'descending'
                             : undefined
                       }
+                      // CONSISTENCY: same header treatment as the dashboard
+                      // table and the pipeline lane headers — uppercase, bold,
+                      // tracked.  Three different header styles for the same
+                      // job is the thing that makes an app look assembled by
+                      // four people.
                       className={cn(
-                        'h-9 px-3 text-xs font-medium text-muted-foreground',
+                        'h-9 px-3 text-xs font-bold tracking-wide text-muted-foreground uppercase',
                         alignClass(meta),
                         meta?.headerClassName,
                       )}
@@ -347,10 +359,18 @@ export function DataTable<T extends RowData>({
                         }
                       : undefined
                   }
+                  // CONSISTENCY: the same --row-hover the dashboard table and
+                  // the pipeline cards use, so "the thing under my pointer" is
+                  // one colour across the whole application.
+                  // ACCESSIBILITY: no `role="button"` — that would replace the
+                  // row semantics a screen reader needs to announce cells
+                  // against their headers.  The row stays a row; it is reachable
+                  // by Tab and activated by Enter/Space, and focus-visible gets
+                  // the same treatment as hover so keyboard users see position.
                   className={cn(
                     'border-border outline-none',
                     onRowClick &&
-                      'cursor-pointer hover:bg-accent/60 focus-visible:bg-accent/60',
+                      'cursor-pointer hover:bg-[var(--row-hover)] focus-visible:bg-[var(--row-hover)]',
                   )}
                 >
                   {row.getAllCells().map((cell) => {
@@ -377,8 +397,16 @@ export function DataTable<T extends RowData>({
         </Table>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+      {/* Status band.  The record count lives here and ONLY here — it used to
+          appear twice, as "8 rows" above the table and "1–8 of 8" below it. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-3 py-2">
         <p className="text-xs text-muted-foreground">
+          {!loading && (
+            <span className="font-medium text-foreground tabular-nums">
+              {totalRows} {totalRows === 1 ? 'record' : 'records'}
+            </span>
+          )}
+          {!loading && footnote ? ' · ' : null}
           {footnote}
         </p>
 

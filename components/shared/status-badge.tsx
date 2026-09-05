@@ -126,8 +126,14 @@ export function StatusBadge({
   return (
     <span
       data-status={status}
+      /* The tone is exposed so a light surface can restate these six palettes
+         in one place (see `.theme-warm [data-tone=…]` in app/globals.css)
+         instead of every screen overriding badge colours inline. */
+      data-tone={tone}
       className={cn(
-        'inline-flex h-5 w-fit shrink-0 items-center whitespace-nowrap rounded-md border px-1.5 text-[0.7rem] font-medium',
+        // Square, not pill: sharp corners plus the concrete grain applied in
+        // app/globals.css read as a stamped label rather than a rounded chip.
+        'inline-flex h-5 w-fit shrink-0 items-center whitespace-nowrap rounded-none border px-2 text-[0.7rem] font-semibold',
         TONE[tone],
         className,
       )}

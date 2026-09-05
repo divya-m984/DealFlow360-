@@ -5,12 +5,18 @@
 // backorders — is D2's application logic in lib/allocate.ts.  This screen
 // renders its output and nothing more; no allocation decision is made here.
 //
-// PROVISIONAL CONTRACT.  GET /api/fulfilment is still a 501 stub owned by D2
-// with no declared response type.  The row shape is derived from `sales_order`
-// in db/schema.sql plus the summary fields a list view needs, which D2's query
-// has to aggregate from `fulfillment_allocation` and `backorder` (both are
-// per-order-line, so a per-order list cannot show them without a rollup).
-// Only `id` and `state` are treated as required.
+// CONTRACT: matched against the landed GET /api/fulfilment (D2).  The Phase 2
+// provisional shape guessed wrong in four places and has been corrected:
+//   • there is no `line_count` / `lines_allocated` — the API returns per-status
+//     allocation COUNTS (planned_allocations / reserved_allocations /
+//     shipped_allocations)
+//   • there is no `qty_backordered` — it is `open_backorders`, a COUNT of
+//     unresolved backorder rows, not a quantity
+//   • there is no warehouse code list — it is `warehouses_used`, an integer
+//     count of DISTINCT warehouses on the order
+//   • there is no `quotation_id`; only `quotation_number` is joined through
+// `is_late` is computed in SQL against CURRENT_DATE, so lateness is the
+// server's answer rather than a client clock comparison.
 'use client'
 
 import { useRouter } from 'next/navigation'
@@ -26,31 +32,40 @@ import { useListData } from '@/components/shared/use-list-data'
 
 type FulfilmentRow = {
   id: number
+  number: string
   /** order_state: confirmed | split_pending | partially_fulfilled | fulfilled | backorder | cancelled */
   state: string
-  number?: string
-  quotation_id?: number
-  quotation_number?: string
-  customer_name?: string
-  currency_code?: string
-  grand_total?: string | number
-  /** Rollups over the order's lines. */
-  line_count?: number
-  lines_allocated?: number
-  qty_backordered?: string | number
-  /** Whichever shape D2 sends: a joined string or a real array of codes. */
-  warehouses?: string | string[]
-  promised_delivery_date?: string
-  created_at?: string
+  customer_id: number
+  customer_name: string
+  currency_code: string
+  grand_total: string | number
+  promised_delivery_date: string | null
+  created_at: string
+  quotation_number: string
+  is_late: boolean
+  planned_allocations: number
+  reserved_allocations: number
+  shipped_allocations: number
+  warehouses_used: number
+  open_backorders: number
+  shipping_cost: string | number
 }
 
-function Muted() {
-  return <span className="text-muted-foreground">—</span>
-}
+/** Allocation rows by status — nothing at all is the operationally notable case. */
+function AllocationSummary({ row }: { row: FulfilmentRow }) {
+  const parts: string[] = []
+  if (row.planned_allocations) parts.push(`${row.planned_allocations} planned`)
+  if (row.reserved_allocations) parts.push(`${row.reserved_allocations} reserved`)
+  if (row.shipped_allocations) parts.push(`${row.shipped_allocations} shipped`)
 
-function warehouseList(value: string | string[] | undefined) {
-  if (!value) return []
-  return Array.isArray(value) ? value : value.split(',').map((s) => s.trim())
+  if (parts.length === 0) {
+    return <span className="font-medium text-[var(--accent-amber)]">Not allocated</span>
+  }
+  return (
+    <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+      {parts.join(' · ')}
+    </span>
+  )
 }
 
 const col = createDataTableColumns<FulfilmentRow>()
@@ -58,83 +73,58 @@ const col = createDataTableColumns<FulfilmentRow>()
 const columns: DataTableColumns<FulfilmentRow> = col.columns([
   col.accessor('number', {
     header: 'Order',
-    cell: ({ row }) => {
-      const { number, quotation_number } = row.original
-      return (
-        <span className="flex flex-col leading-tight">
-          <span className="font-medium text-foreground">
-            {number ?? `#${row.original.id}`}
-          </span>
-          {quotation_number && (
-            <span className="text-xs text-muted-foreground">
-              from {quotation_number}
-            </span>
-          )}
+    cell: ({ row }) => (
+      <span className="flex flex-col leading-tight">
+        <span className="font-medium text-foreground">{row.original.number}</span>
+        <span className="text-xs text-muted-foreground">
+          from {row.original.quotation_number}
         </span>
-      )
-    },
+      </span>
+    ),
   }),
   col.accessor('customer_name', {
     header: 'Customer',
-    cell: ({ row }) => row.original.customer_name ?? <Muted />,
+    cell: ({ row }) => row.original.customer_name,
   }),
   col.accessor('state', {
     header: 'State',
     cell: ({ row }) => <StatusBadge status={row.original.state} />,
   }),
-  col.accessor('lines_allocated', {
-    header: 'Allocated',
-    meta: { align: 'right' },
-    cell: ({ row }) => {
-      const { lines_allocated, line_count } = row.original
-      if (lines_allocated === undefined || line_count === undefined) return <Muted />
-      const complete = lines_allocated >= line_count
-      return (
-        <span
-          className={cnAllocated(complete)}
-          title={`${lines_allocated} of ${line_count} order lines allocated`}
-        >
-          {lines_allocated}/{line_count}
-        </span>
-      )
-    },
+  col.display({
+    id: 'allocations',
+    header: 'Allocation',
+    cell: ({ row }) => <AllocationSummary row={row.original} />,
   }),
-  col.accessor('qty_backordered', {
-    header: 'Backordered',
-    meta: { align: 'right' },
-    cell: ({ row }) => {
-      const qty = row.original.qty_backordered
-      if (qty === undefined || qty === null || Number(qty) === 0) {
-        return <span className="text-muted-foreground">—</span>
-      }
-      return <Num value={qty} className="font-medium text-red-300" />
-    },
+  col.accessor('warehouses_used', {
+    header: 'WH',
+    meta: { align: 'right', headerClassName: 'w-12' },
+    // Zero renders as an em dash, matching Backorders below — a column of
+    // literal zeroes reads as data when it means "nothing here yet".
+    cell: ({ row }) =>
+      row.original.warehouses_used > 0 ? (
+        <Num value={row.original.warehouses_used} className="text-muted-foreground" />
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
   }),
-  col.accessor('warehouses', {
-    header: 'Warehouses',
-    cell: ({ row }) => {
-      const list = warehouseList(row.original.warehouses)
-      if (list.length === 0) return <Muted />
-      return (
-        <span className="inline-flex flex-wrap items-center gap-1">
-          {list.map((code) => (
-            <span
-              key={code}
-              className="rounded border border-border bg-muted/60 px-1.5 text-[0.7rem] leading-5 text-muted-foreground"
-            >
-              {code}
-            </span>
-          ))}
-        </span>
-      )
-    },
+  col.accessor('open_backorders', {
+    header: 'Backorders',
+    meta: { align: 'right' },
+    cell: ({ row }) =>
+      row.original.open_backorders > 0 ? (
+        <Num value={row.original.open_backorders} className="font-medium text-destructive" />
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
   }),
   col.accessor('promised_delivery_date', {
     header: 'Promised',
     cell: ({ row }) => (
       <DateValue
         value={row.original.promised_delivery_date}
-        className="text-muted-foreground"
+        className={
+          row.original.is_late ? 'font-medium text-destructive' : 'text-muted-foreground'
+        }
       />
     ),
   }),
@@ -144,19 +134,12 @@ const columns: DataTableColumns<FulfilmentRow> = col.columns([
     cell: ({ row }) => (
       <Money
         value={row.original.grand_total}
-        currency={row.original.currency_code ?? 'INR'}
+        currency={row.original.currency_code}
         className="font-medium"
       />
     ),
   }),
 ])
-
-/** A fully allocated order is unremarkable; a partial one is the thing to see. */
-function cnAllocated(complete: boolean) {
-  return complete
-    ? 'tabular-nums text-muted-foreground'
-    : 'tabular-nums font-medium text-amber-300'
-}
 
 export default function FulfilmentPage() {
   const router = useRouter()

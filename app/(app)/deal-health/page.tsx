@@ -146,7 +146,7 @@ function SummaryTiles({
                 <Money value={entry.value} currency={currency} /> at risk
               </span>
               {entry.unactioned > 0 && (
-                <span className="text-amber-300">
+                <span className="text-[var(--accent-amber)]">
                   <Num value={entry.unactioned} /> unactioned
                 </span>
               )}

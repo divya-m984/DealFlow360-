@@ -2,6 +2,16 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Standard shadcn contract: `dark:` utilities apply under `<html class="dark">`.
+   The class is written before first paint by the inline script in
+   app/layout.tsx and toggled at runtime by components/shared/theme-toggle.tsx,
+   so the shadcn primitives in components/ui/** and the `dark:` classes on the
+   screens owned by D2/D4 all behave the way their authors intended in BOTH
+   modes, with no per-file edit. */
+/* `:where(.dark, .dark *)` rather than `:is(.dark *)` — D4's form, kept on
+   merge because it is strictly better: it also matches the `.dark` element
+   ITSELF, so a `dark:` utility placed on <html> works.  `:where` also keeps the
+   variant at zero specificity, which is what shadcn's primitives assume. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
@@ -52,118 +62,219 @@
 }
 
 /* ---------------------------------------------------------------------------
-   DealFlow360 Theme System
-   Provides a cohesive, enterprise-grade dual palette with blue-cooled neutrals (hue 258).
+   LIGHT is the default palette; DARK overrides it in `.dark` below.  Both
+   declare the SAME token names, so every component reads `bg-card` /
+   `text-foreground` / `border-border` and re-themes with no component change.
+
+   Chroma is deliberately low on both scales: colour separates surfaces, it
+   does not decorate them.  Saturation is spent only where it carries meaning —
+   the status badges and the nav bar.
+   OWNER: D3.
    --------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
-
-  --font-sans: var(--font-geist-sans);
-
-  --background: oklch(0.985 0.005 258);
-  --foreground: oklch(0.18 0.025 258);
-
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.025 258);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.025 258);
-
-  --primary: oklch(0.52 0.19 258);
-  --primary-foreground: oklch(0.99 0.002 258);
-
-  --secondary: oklch(0.945 0.012 258);
-  --secondary-foreground: oklch(0.22 0.025 258);
-
-  --muted: oklch(0.94 0.01 258);
-  --muted-foreground: oklch(0.48 0.025 258);
-
-  --accent: oklch(0.925 0.018 258);
-  --accent-foreground: oklch(0.2 0.025 258);
-
-  --destructive: oklch(0.577 0.245 27.3);
-
-  --border: oklch(0.88 0.012 258);
-  --input: oklch(0.88 0.012 258);
-  --ring: oklch(0.52 0.19 258);
-
-  /* The application chrome — deep rich indigo-slate bar for crisp contrast in both modes */
-  --nav: oklch(0.36 0.14 258);
-  --nav-foreground: oklch(0.99 0.005 258);
-  --nav-active: oklch(0.24 0.05 258);
-
-  --chart-1: oklch(0.52 0.19 258);
-  --chart-2: oklch(0.6 0.16 165);
-  --chart-3: oklch(0.65 0.16 85);
-  --chart-4: oklch(0.58 0.2 25);
-  --chart-5: oklch(0.55 0.18 300);
-
-  --radius: 0.5rem;
-
-  --sidebar: oklch(0.975 0.008 258);
-  --sidebar-foreground: oklch(0.18 0.025 258);
-  --sidebar-primary: oklch(0.52 0.19 258);
-  --sidebar-primary-foreground: oklch(0.99 0.002 258);
-  --sidebar-accent: oklch(0.925 0.018 258);
-  --sidebar-accent-foreground: oklch(0.2 0.025 258);
-  --sidebar-border: oklch(0.88 0.012 258);
-  --sidebar-ring: oklch(0.52 0.19 258);
-}
-
-.dark {
-  color-scheme: dark;
 
   /* app/layout.tsx exposes Geist as --font-geist-sans; the `font-sans`
      utility resolves through --font-sans, which was previously undefined. */
   --font-sans: var(--font-geist-sans);
 
-  --background: oklch(0.165 0.014 258);
-  --foreground: oklch(0.965 0.004 258);
+  /* HIERARCHY BY LIGHTNESS.  Four surfaces, each a clear step apart, so depth
+     is legible without a single border: page (0.945) < band (0.925) <
+     hover (0.90) < card (1.0).  They used to sit within 0.02 of each other,
+     which made a header band and the page behind it the same colour. */
+  --background: oklch(0.945 0.012 150);
+  --foreground: oklch(0.22 0.012 150);
 
-  --card: oklch(0.205 0.016 258);
-  --card-foreground: oklch(0.965 0.004 258);
-  --popover: oklch(0.218 0.016 258);
-  --popover-foreground: oklch(0.965 0.004 258);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.012 150);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.012 150);
 
-  --primary: oklch(0.588 0.176 258);
-  --primary-foreground: oklch(0.985 0.003 258);
+  --primary: oklch(0.47 0.15 32);
+  --primary-foreground: oklch(0.99 0.005 25);
 
-  --secondary: oklch(0.262 0.017 258);
-  --secondary-foreground: oklch(0.965 0.004 258);
+  --secondary: oklch(0.925 0.016 150);
+  --secondary-foreground: oklch(0.27 0.012 150);
 
-  --muted: oklch(0.248 0.016 258);
-  --muted-foreground: oklch(0.7 0.018 258);
+  --muted: oklch(0.925 0.016 150);
+  --muted-foreground: oklch(0.48 0.014 150);
 
-  --accent: oklch(0.288 0.018 258);
+  --accent: oklch(0.9 0.022 150);
+  --accent-foreground: oklch(0.22 0.012 150);
+
+  --destructive: oklch(0.47 0.15 32);
+
+  --border: oklch(0.855 0.014 60);
+  --input: oklch(0.84 0.016 60);
+  --ring: oklch(0.47 0.15 32);
+
+  /* THREE ACCENTS, THREE FAR-APART HUES (165 / 75 / 28).  They were previously
+     28 / 68 / 45 — three reds an amber apart, which meant "open pipeline" and
+     "high risk" read as the same signal.  Hue now carries the meaning:
+     teal = steady, amber = waiting on someone, red = danger. */
+  --accent-teal: oklch(0.45 0.09 165);
+  --accent-teal-soft: oklch(0.925 0.045 165);
+  --accent-amber: oklch(0.5 0.11 75);
+  --accent-amber-soft: oklch(0.93 0.06 80);
+  --accent-red: oklch(0.475 0.16 28);
+  --accent-red-soft: oklch(0.925 0.05 28);
+
+  /* Tint of the nav orange — enough to read as "this row", not enough to look
+     like a selected-and-acted-on state. */
+  --row-hover: oklch(0.935 0.042 62);
+
+  --shadow-card:
+    0 1px 2px oklch(0.35 0.02 150 / 7%), 0 1px 1px oklch(0.35 0.02 150 / 4%);
+
+  /* Denser than shadcn's 0.625rem default — these are operational screens. */
+  --radius: 0.5rem;
+
+  /* The application chrome — one dark orange bar, IDENTICAL in both modes, so
+     the app keeps its identity when the theme flips. */
+  --nav: oklch(0.455 0.095 50);
+  --nav-foreground: oklch(0.975 0.008 70);
+  --nav-active: oklch(0.315 0.062 46);
+
+  --chart-1: oklch(0.55 0.14 50);
+  --chart-2: oklch(0.55 0.1 165);
+  --chart-3: oklch(0.6 0.1 85);
+  --chart-4: oklch(0.52 0.14 25);
+  --chart-5: oklch(0.52 0.11 300);
+
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.245 0.01 150);
+  --sidebar-primary: oklch(0.475 0.135 32);
+  --sidebar-primary-foreground: oklch(0.99 0.005 25);
+  --sidebar-accent: oklch(0.94 0.009 150);
+  --sidebar-accent-foreground: oklch(0.245 0.01 150);
+  --sidebar-border: oklch(0.885 0.008 60);
+  --sidebar-ring: oklch(0.475 0.135 32);
+}
+
+/* Neutrals are cooled towards blue (hue 258) rather than pure grey so the dark
+   surfaces read as software rather than as an unstyled default. */
+.dark {
+  color-scheme: dark;
+
+  /* Same four-step hierarchy as light, inverted: page (0.145) < card (0.215)
+     < band (0.275) < hover.  The gaps are widened from the original so a
+     header band is visibly a band and not just the card again. */
+  --background: oklch(0.145 0.014 258);
+  --foreground: oklch(0.97 0.004 258);
+
+  --card: oklch(0.215 0.016 258);
+  --card-foreground: oklch(0.97 0.004 258);
+  --popover: oklch(0.235 0.016 258);
+  --popover-foreground: oklch(0.97 0.004 258);
+
+  --primary: oklch(0.7 0.16 45);
+  --primary-foreground: oklch(0.16 0.02 45);
+
+  --secondary: oklch(0.275 0.018 258);
+  --secondary-foreground: oklch(0.97 0.004 258);
+
+  --muted: oklch(0.275 0.018 258);
+  --muted-foreground: oklch(0.735 0.02 258);
+
+  --accent: oklch(0.325 0.022 258);
   --accent-foreground: oklch(0.985 0.003 258);
 
-  --destructive: oklch(0.637 0.198 25.8);
+  --destructive: oklch(0.68 0.19 25.8);
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.588 0.176 258);
+  /* 10% was barely visible against --card; a table of row dividers needs the
+     divider to actually divide. */
+  --border: oklch(1 0 0 / 17%);
+  --input: oklch(1 0 0 / 22%);
+  --ring: oklch(0.7 0.16 45);
 
-  /* The application chrome — one blue bar across every internal screen. */
-  --nav: oklch(0.398 0.126 258);
-  --nav-foreground: oklch(0.98 0.008 258);
-  --nav-active: oklch(0.235 0.03 258);
+  /* Same three hues as light — 165 / 75 / 28 — lifted for a dark surface. */
+  --accent-teal: oklch(0.75 0.12 165);
+  --accent-teal-soft: oklch(0.75 0.12 165 / 15%);
+  --accent-amber: oklch(0.82 0.13 80);
+  --accent-amber-soft: oklch(0.82 0.13 80 / 15%);
+  --accent-red: oklch(0.7 0.17 28);
+  --accent-red-soft: oklch(0.7 0.17 28 / 15%);
 
-  --chart-1: oklch(0.62 0.17 258);
+  --row-hover: oklch(0.7 0.14 50 / 20%);
+
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 30%);
+
+  --chart-1: oklch(0.7 0.14 50);
   --chart-2: oklch(0.7 0.14 165);
   --chart-3: oklch(0.78 0.145 85);
   --chart-4: oklch(0.65 0.19 25);
   --chart-5: oklch(0.66 0.16 300);
 
-  /* Denser than shadcn's 0.625rem default — these are operational screens. */
-  --radius: 0.5rem;
-
   --sidebar: oklch(0.205 0.016 258);
   --sidebar-foreground: oklch(0.965 0.004 258);
-  --sidebar-primary: oklch(0.588 0.176 258);
-  --sidebar-primary-foreground: oklch(0.985 0.003 258);
+  --sidebar-primary: oklch(0.65 0.15 45);
+  --sidebar-primary-foreground: oklch(0.985 0.003 60);
   --sidebar-accent: oklch(0.288 0.018 258);
   --sidebar-accent-foreground: oklch(0.985 0.003 258);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.588 0.176 258);
+  --sidebar-ring: oklch(0.65 0.15 45);
+}
+
+/* ---------------------------------------------------------------------------
+   StatusBadge — light mode only.
+   The component's own tone classes (`text-sky-300` etc.) are tuned for dark and
+   are unreadable on a pale surface, so light mode restates the three colour
+   properties they set.  UNLAYERED, so they beat Tailwind's `utilities` layer
+   regardless of specificity — the badge markup stays exactly as it is.
+   Keyed off `data-tone`, which components/shared/status-badge.tsx emits.
+
+   Each tone is a muted fill carrying dark text of the same hue, so a row of
+   badges reads as a set of stamped labels.  The six tones keep their MEANINGS
+   and their hues in both modes.
+   --------------------------------------------------------------------------- */
+
+/* Concrete grain.  An inline SVG feTurbulence — no image asset, no dependency,
+   and it scales with the badge.  `fractalNoise` at a high base frequency is
+   fine aggregate rather than clouds; desaturating leaves grey speckle, and
+   `multiply` lets that speckle darken the fill unevenly.  `stitchTiles` keeps
+   the 80px tile seamless. */
+:root {
+  --grit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23g)' opacity='0.22'/%3E%3C/svg%3E");
+}
+
+:root:not(.dark) [data-tone] {
+  background-image: var(--grit);
+  background-size: 80px 80px;
+  background-blend-mode: multiply;
+}
+
+:root:not(.dark) [data-tone='neutral'] {
+  border-color: oklch(0.78 0.012 152);
+  background-color: oklch(0.895 0.01 152);
+  color: oklch(0.29 0.012 150);
+}
+:root:not(.dark) [data-tone='info'] {
+  border-color: oklch(0.75 0.09 250);
+  background-color: oklch(0.875 0.06 250);
+  color: oklch(0.33 0.13 255);
+}
+:root:not(.dark) [data-tone='progress'] {
+  border-color: oklch(0.79 0.105 80);
+  background-color: oklch(0.895 0.08 82);
+  color: oklch(0.35 0.095 65);
+}
+:root:not(.dark) [data-tone='positive'] {
+  border-color: oklch(0.76 0.1 162);
+  background-color: oklch(0.885 0.072 163);
+  color: oklch(0.31 0.09 162);
+}
+:root:not(.dark) [data-tone='negative'] {
+  border-color: oklch(0.755 0.11 28);
+  background-color: oklch(0.878 0.075 28);
+  color: oklch(0.35 0.155 28);
+}
+/* `muted` stays unfilled — it is the tone for cancelled/expired/archived, and
+   a full stamp would give a dead record the same weight as a live one. */
+:root:not(.dark) [data-tone='muted'] {
+  border-color: oklch(0.86 0.008 152);
+  background-color: transparent;
+  background-image: none;
+  color: oklch(0.5 0.01 150);
 }
 
 @layer base {
@@ -183,7 +294,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* The default dark scrollbar is a bright slab against these surfaces. */
+  /* The default scrollbar is a bright slab against these surfaces. */
   * {
     scrollbar-color: var(--muted) transparent;
     scrollbar-width: thin;
