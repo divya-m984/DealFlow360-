@@ -110,6 +110,7 @@ them a second time** — which is the whole point of this document.
 | `components/billing/format.tsx` | **D2** | `qty()` and the two date helpers only. The money formatter that used to live here is gone — D2's screens now use D3's `components/shared/money.tsx`, along with `StatusBadge`, `ErrorState` and `EmptyState`. |
 | `components/billing/invoice-pdf.ts`, `components/fulfilment/split-plan.tsx` | **D2** | Invoice PDF, and the suggested-split card. |
 | `lib/allocate.test.mjs` | **D2** | 26 hand-run cases for the allocator. `.mjs`, not `.ts`, because Node's ESM loader needs the explicit `./allocate.ts` specifier and tsc rejects that without `allowImportingTsExtensions` — which would mean editing the Integrator's frozen `tsconfig.json`. `.mjs` is outside tsconfig's `include`, so both tools stay happy. Run it with `node --experimental-strip-types lib/allocate.test.mjs`. |
+| `db/seed/07-mobility.sql` | **D2** | CLAIMED at jury review 2. Phones, phone accessories and two more laptops, plus 27 new `upsell_rule` edges — the many-to-many the jury asked for, seeded as their own phone→case→power-bank example. Additive only: it runs after `06` so no invariant in `04`/`06` can see its rows, and it does not edit `02-catalog.sql` (the Integrator's) at all. Seeds LP15HP to exactly 70 units network-wide for the partial-fulfilment demo, and fails the seed if that drifts. |
 
 ### ⚠ One change to a FROZEN file — `lib/db.ts`
 
