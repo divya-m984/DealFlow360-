@@ -66,7 +66,16 @@ vendored into the repo — these are the URLs, so anyone can re-pull and check.
 | SAC service-code list | `github.com/crusher95/hsn-sac-gst-json` → `hsn_all.json` | service tax codes | 568 |
 | India pincode/state list | `github.com/sanand0/pincode` → `data/IN.csv` | hub → state mapping | 11,042 |
 | Published surface-freight zone bands | web, 2026 rate cards | `shipping_cost_weight` | — |
-| Street prices | Flipkart / Dell India / Lenovo India listings, Sept 2026 | `base_price` | — |
+| Street prices | Flipkart / Dell India / IndiaMART listings, 5 Sept 2026 | `base_price` — **3 of 11 only** | — |
+| Spot FX | rate trackers, 5 Sept 2026 | `fx_rate` (USD/INR 94.38, EUR/INR 109.81) | 2 |
+
+**The price row is 3 of 11, not 11 of 11.** `DOCK`, `LP14` and `MOUSE` were
+checked against live listings. The other eight — `LP16`, `KBD`, `MON27`,
+`SETUP`, `WARR`, `CARE2`, `SLA`, `MANUAL` — are our estimates, right to about
+the nearest thousand and not looked up. Every `cost` is an assumption too:
+distributor cost is not public for any of these, and the margins are set to
+make PS §10's own justification true. Anyone quoting this table to a judge
+should quote that sentence with it.
 
 ### Two things we found wrong in the downloaded data
 
@@ -87,6 +96,31 @@ that is all we used it for, and the weights come from published freight zone
 bands instead. Coarser and right beats precise and wrong.
 
 ---
+
+## ⚠ One thing D4 must fix in `01-identity.sql` itself
+
+The existing FX rows are stale and now contradict the ones this handoff adds:
+
+```sql
+('INR', 'USD', 0.01200000, CURRENT_DATE),   -- implies USD/INR 83.33
+('INR', 'EUR', 0.01100000, CURRENT_DATE),   -- implies EUR/INR 90.91
+```
+
+Real spot on 5 Sept 2026 is **USD/INR 94.38** and **EUR/INR 109.81**. Those two
+rows are ~13% and ~17% out, and with this handoff applied the same database
+would hold both `INR→USD 0.012` and `USD→INR 94.38`, which disagree by 13%.
+A judge converting one invoice on their phone finds that in seconds.
+
+D4 owns those lines. The correct reciprocals:
+
+```sql
+('INR', 'USD', 0.01059500, CURRENT_DATE),   -- 1 / 94.38
+('INR', 'EUR', 0.00910700, CURRENT_DATE),   -- 1 / 109.81
+```
+
+This is the one number in the whole seed that has a right answer which changes
+daily, and the only sensible policy is to look it up on the morning of the
+demo rather than trust anything written here.
 
 ## Optional: the customer rename
 

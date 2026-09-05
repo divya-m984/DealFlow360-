@@ -10,12 +10,30 @@
 -- data that is real or plausible, and ₹1,200 is not a plausible laptop.  A
 -- judge in Gandhinagar clocks that in one second.
 --
--- ── WHAT IS REAL HERE ───────────────────────────────────────────────
---   · product names are real, currently-sold business hardware
---   · base_price is the real Indian street price (Sept 2026), rounded
---   · tax_pct is the REAL GST rate for that item's REAL HSN/SAC code
---   · HSN and SAC codes are carried in `description` because the schema has
---     no column for them and the schema is frozen — see README.md
+-- ── WHAT IS REAL HERE, AND WHAT IS NOT ──────────────────────────────
+-- Being precise about this is the point, so:
+--
+--   REAL, and re-checkable
+--     · product names — currently-sold business hardware, real model numbers
+--     · tax_pct — the real GST rate for that item's real HSN/SAC code, each
+--       looked up in a downloaded dataset rather than assumed
+--     · HSN and SAC codes, carried in `description` because the schema has no
+--       column for them and the schema is frozen — see README.md
+--     · THREE prices, checked against live listings on 5 Sept 2026:
+--         DOCK   ₹11,999  — exact match to a current listing
+--         LP14   ₹65,990  — exact match, Ryzen 7 / 16GB build
+--         MOUSE  ₹ 8,995  — inside the observed ₹8,700–10,300 spread
+--
+--   ESTIMATED BY US — plausible, in the right band, NOT verified
+--     · the other EIGHT prices: LP16, KBD, MON27, SETUP, WARR, CARE2, SLA,
+--       MANUAL.  They are what these things cost to the nearest thousand, and
+--       nobody looked them up.
+--     · EVERY cost.  Distributor cost is not public for any of these; the
+--       margins are reverse-engineered to make PS §10's justification true
+--       (see below).  If a judge asks "where does ₹52,792 come from", the
+--       honest answer is "a 20% margin assumption", not "a price list".
+--
+-- Do not let the real half make the estimated half sound sourced.
 --
 -- ── THE GST TRAP WE WALKED INTO, AND OUT OF ─────────────────────────
 -- The public HSN dataset we pulled these rates from is PRE-GST-2.0.  It still
@@ -54,9 +72,13 @@ INSERT INTO product_category (code, name, max_discount_pct) VALUES
 --   margin % = (base_price − cost) / base_price
 INSERT INTO product (sku, name, category_id, base_price, cost, currency_code, unit, tax_pct, description, is_subscription, recurring_cycle) VALUES
   -- HARDWARE · HSN 8471 (data processing machines) and 8473 (parts) → 18%
-  ('LP14',   'Lenovo ThinkPad E14 Gen 5 · Ryzen 5 · 16GB / 512GB',
+  -- Spec and price are ONE OBSERVED LISTING, not a spec from one and a price
+  -- from another.  The Ryzen 5 / 8GB build of this machine lists nearer
+  -- ₹86,000; ₹65,990 is the Ryzen 7 / 16GB build.  Pairing the cheaper number
+  -- with the better spec would have been the most checkable lie in the seed.
+  ('LP14',   'Lenovo ThinkPad E14 Gen 5 · Ryzen 7 · 16GB / 512GB',
              (SELECT id FROM product_category WHERE code='hardware'),   65990.0000, 52792.0000, 'INR', 'Each',    18.00,
-             'HSN 8471 · 14" business laptop, Ryzen 5 7530U, 16GB RAM, 512GB NVMe, Win 11 Pro',                  false, NULL),
+             'HSN 8471 · 14" business laptop, Ryzen 7 7730U, 16GB RAM, 512GB NVMe, Win 11 Pro',                  false, NULL),
   ('LP16',   'Dell Latitude 5450 · Core Ultra 5 · 16GB / 512GB',
              (SELECT id FROM product_category WHERE code='hardware'),   78500.0000, 62800.0000, 'INR', 'Each',    18.00,
              'HSN 8471 · 14" business laptop, Intel Core Ultra 5 125U, 16GB RAM, 512GB NVMe',                    false, NULL),

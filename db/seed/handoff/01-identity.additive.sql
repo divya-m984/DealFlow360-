@@ -46,9 +46,17 @@ BEGIN;
 
 -- Two more FX rates so the multi-currency bonus (PS §7) has more than one
 -- pair to show.  as_of is CURRENT_DATE, matching the existing rows.
+--
+-- THESE ARE REAL SPOT RATES, CHECKED ON 5 SEPT 2026 — not remembered ones.
+-- The first draft of this file carried USD/INR 83.50, which was a rate from
+-- roughly two years earlier and was 13% wrong.  It is the one number here that
+-- a judge could disprove from their phone in five seconds, so it is the one
+-- number that had to be looked up rather than recalled.
+--   USD/INR  94.38   (4 Sept 2026 close)
+--   EUR/INR 109.81   (5 Sept 2026)
 INSERT INTO fx_rate (from_code, to_code, rate, as_of) VALUES
-  ('USD', 'INR', 83.50000000, CURRENT_DATE),
-  ('EUR', 'INR', 91.20000000, CURRENT_DATE)
+  ('USD', 'INR',  94.38000000, CURRENT_DATE),
+  ('EUR', 'INR', 109.81000000, CURRENT_DATE)
 ON CONFLICT (from_code, to_code, as_of) DO NOTHING;
 
 INSERT INTO customer (name, tier_id, currency_code, email) VALUES
