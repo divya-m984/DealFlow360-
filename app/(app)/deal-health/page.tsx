@@ -9,19 +9,23 @@
 // quotation columns, so unresolved `deal_alert` rows must exist in the seed or
 // this list is legitimately empty.
 //
-// ── NUDGE / ESCALATE ARE NOT WIRED YET ──────────────────────────────────────
-// BLOCKED ON D1: app/api/deal-alerts/[id]/action/route.ts is still a 501 stub.
-// Its POST() takes no arguments and declares no zod schema, so the request
-// contract is undefined — only the method, the path and the
-// { data } | { error: { message } } envelope are determinable.  D3 will not
-// guess a body shape, so the buttons are rendered in a disabled, clearly
-// labelled state and send nothing.
+// ── NUDGE / ESCALATE — WIRED (contract supplied by D1) ──────────────────────
+// D3 correctly refused to guess a request shape while the endpoint was a 501
+// stub. It is now real, and the contract is:
 //
-// D1 MUST SUPPLY, before these can be wired:
-//   • the request body — which key carries the action, and its accepted values
-//   • whether a note/comment field is expected alongside it
-//   • the success payload (returning the updated alert row would let this
-//     screen skip a refetch)
+//   POST /api/deal-alerts/[id]/action
+//   body   { action: 'nudge' | 'escalate' | 'resolve', note?: string }
+//   200    { data: <the updated deal_alert row> }
+//
+// The handler writes last_action / last_action_at / last_action_by_user_id and,
+// for nudge and escalate, also bumps quotation.last_activity_at — otherwise
+// nudging a stalled deal would leave it looking exactly as stalled as before.
+// 'resolve' additionally sets resolved_at, which drops the row out of this
+// list on the next load.
+//
+// The response IS the updated row, but this screen refetches anyway: the three
+// tiles above are derived from the same rows, so patching one row locally
+// would leave the counts stale until something else reloaded them.
 // The write itself stays D1's: that endpoint owns deal_alert.last_action,
 // .last_action_at and .last_action_by_user_id.  D3 never writes SQL, never
 // fakes a success, and never patches last_action locally.
@@ -160,36 +164,68 @@ function SummaryTiles({
 
 /* ── Row actions ──────────────────────────────────────────────────────────── */
 
-const ACTION_UNAVAILABLE = 'Awaiting backend support — the action endpoint is not implemented yet.'
-
 /**
- * Rendered disabled and inert until D1 defines the POST contract (see the
- * header of this file).  It deliberately has no onClick: there is no request
- * to send that would not be a guess.
+ * One alert action. Stops the click reaching the row (the row opens the
+ * quotation), posts, then asks the page to refetch so the tiles move with the
+ * table.
  */
 function ActionButton({
   label,
   icon,
+  alertId,
+  action,
+  onDone,
 }: {
   label: string
   icon: React.ReactNode
+  alertId: number
+  action: 'nudge' | 'escalate' | 'resolve'
+  onDone: (message: string) => void
 }) {
+  const [busy, setBusy] = React.useState(false)
+
   return (
     <button
       type="button"
-      disabled
-      aria-disabled="true"
+      disabled={busy}
+      onClick={async (e) => {
+        // The row itself navigates to the quotation — this must not.
+        e.stopPropagation()
+        setBusy(true)
+        const res = await fetch(`/api/deal-alerts/${alertId}/action`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action }),
+        })
+        const body = await res.json().catch(() => null)
+        setBusy(false)
+        onDone(
+          res.ok
+            ? `${body?.data?.last_action ?? label} — recorded.`
+            : (body?.error?.message ?? 'That did not work'),
+        )
+      }}
       className={cn(
-        'inline-flex h-6 cursor-not-allowed items-center gap-1 rounded-md border border-border px-1.5',
-        'text-[0.7rem] font-medium text-muted-foreground opacity-50',
+        'inline-flex h-6 items-center gap-1 rounded-md border border-border px-1.5',
+        'text-[0.7rem] font-medium transition-colors',
+        busy
+          ? 'cursor-not-allowed text-muted-foreground opacity-50'
+          : 'cursor-pointer text-foreground hover:bg-muted',
       )}
     >
       {icon}
       {label}
-      <span className="sr-only"> — {ACTION_UNAVAILABLE}</span>
     </button>
   )
 }
+
+/**
+ * `columns` lives at module scope so its identity never changes (see below), so
+ * it cannot close over the page's refetch. The page writes its handler here on
+ * mount instead — one mutable slot, rather than rebuilding the column array on
+ * every render and re-deriving all of TanStack's row models with it.
+ */
+const actionSink: { onDone: (message: string) => void } = { onDone: () => {} }
 
 /* ── Columns ──────────────────────────────────────────────────────────────── */
 
@@ -273,18 +309,28 @@ const columns: DataTableColumns<DealAlertRow> = col.columns([
   col.display({
     id: 'actions',
     header: 'Actions',
-    cell: () => (
-      // The row navigates to the quotation. stopPropagation stays on the
-      // wrapper even while the buttons are inert: the wrapper itself is not
-      // disabled, so a click on it would otherwise bubble and navigate.
+    cell: ({ row }) => (
+      // The row navigates to the quotation, so every click in this cell is
+      // stopped at the wrapper as well as on the buttons themselves.
       <span
-        title={ACTION_UNAVAILABLE}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         className="flex items-center gap-1"
       >
-        <ActionButton label="Nudge" icon={<BellRing className="size-3" />} />
-        <ActionButton label="Escalate" icon={<ChevronsUp className="size-3" />} />
+        <ActionButton
+          label="Nudge"
+          icon={<BellRing className="size-3" />}
+          alertId={row.original.id}
+          action="nudge"
+          onDone={(m) => actionSink.onDone(m)}
+        />
+        <ActionButton
+          label="Escalate"
+          icon={<ChevronsUp className="size-3" />}
+          alertId={row.original.id}
+          action="escalate"
+          onDone={(m) => actionSink.onDone(m)}
+        />
       </span>
     ),
   }),
@@ -297,12 +343,28 @@ export default function DealHealthPage() {
   const { rows, loading, error, retry } =
     useListData<DealAlertRow>('/api/deal-alerts')
 
+  const [notice, setNotice] = React.useState<string | null>(null)
+
+  // Refetch rather than patching one row: the tiles above are derived from the
+  // same rows, so a local patch would leave the counts disagreeing with the
+  // table until something else reloaded.
+  actionSink.onDone = (message) => {
+    setNotice(message)
+    retry()
+  }
+
   return (
     <>
       <PageHeader
         title="Deal Health"
         description="Stalled deals, discount anomalies and delivery slippage across the pipeline."
       />
+
+      {notice && (
+        <p className="mb-3 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+          {notice}
+        </p>
+      )}
 
       {/* Tiles are hidden entirely on error — the table's ErrorState is the
           single, honest report of a failed load. */}
@@ -323,7 +385,7 @@ export default function DealHealthPage() {
         filterPlaceholder="Filter alerts…"
         emptyTitle="No open alerts"
         emptyDescription="Every deal in the pipeline is moving, priced within policy and delivering on time."
-        footnote="Click a row to open the quotation the alert was raised against. Nudge and Escalate are awaiting their backend endpoint."
+        footnote="Click a row to open the quotation the alert was raised against. Nudge records a follow-up; Escalate raises it to the manager."
       />
     </>
   )
