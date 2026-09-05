@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -52,17 +52,63 @@
 }
 
 /* ---------------------------------------------------------------------------
-   DealFlow360 is DARK-ONLY.  There is no light theme and no theme toggle — a
-   half-themed app reads worse than either, and the mockup is dark.
-   The palette is therefore declared once and applied to both `:root` and
-   `.dark`.  `<html>` still carries `class="dark"` (see app/layout.tsx) because
-   every shadcn primitive in components/ui/** ships `dark:` variants, and the
-   `dark` custom-variant above only matches descendants of `.dark`.
-   Neutrals are cooled towards blue (hue 258) rather than pure grey so the
-   surfaces read as software rather than as an unstyled default.
-   OWNER: D3.
+   DealFlow360 Theme System
+   Provides a cohesive, enterprise-grade dual palette with blue-cooled neutrals (hue 258).
    --------------------------------------------------------------------------- */
-:root,
+:root {
+  color-scheme: light;
+
+  --font-sans: var(--font-geist-sans);
+
+  --background: oklch(0.985 0.005 258);
+  --foreground: oklch(0.18 0.025 258);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.025 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.025 258);
+
+  --primary: oklch(0.52 0.19 258);
+  --primary-foreground: oklch(0.99 0.002 258);
+
+  --secondary: oklch(0.945 0.012 258);
+  --secondary-foreground: oklch(0.22 0.025 258);
+
+  --muted: oklch(0.94 0.01 258);
+  --muted-foreground: oklch(0.48 0.025 258);
+
+  --accent: oklch(0.925 0.018 258);
+  --accent-foreground: oklch(0.2 0.025 258);
+
+  --destructive: oklch(0.577 0.245 27.3);
+
+  --border: oklch(0.88 0.012 258);
+  --input: oklch(0.88 0.012 258);
+  --ring: oklch(0.52 0.19 258);
+
+  /* The application chrome — deep rich indigo-slate bar for crisp contrast in both modes */
+  --nav: oklch(0.36 0.14 258);
+  --nav-foreground: oklch(0.99 0.005 258);
+  --nav-active: oklch(0.24 0.05 258);
+
+  --chart-1: oklch(0.52 0.19 258);
+  --chart-2: oklch(0.6 0.16 165);
+  --chart-3: oklch(0.65 0.16 85);
+  --chart-4: oklch(0.58 0.2 25);
+  --chart-5: oklch(0.55 0.18 300);
+
+  --radius: 0.5rem;
+
+  --sidebar: oklch(0.975 0.008 258);
+  --sidebar-foreground: oklch(0.18 0.025 258);
+  --sidebar-primary: oklch(0.52 0.19 258);
+  --sidebar-primary-foreground: oklch(0.99 0.002 258);
+  --sidebar-accent: oklch(0.925 0.018 258);
+  --sidebar-accent-foreground: oklch(0.2 0.025 258);
+  --sidebar-border: oklch(0.88 0.012 258);
+  --sidebar-ring: oklch(0.52 0.19 258);
+}
+
 .dark {
   color-scheme: dark;
 

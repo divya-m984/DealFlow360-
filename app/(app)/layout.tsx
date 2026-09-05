@@ -15,6 +15,7 @@ import { cn } from 'cn'
 import { NAV } from '@/components/nav'
 import { IdentitySwitcher, type Identity } from '@/components/shared/identity-switcher'
 import { Toaster } from '@/components/ui/sonner'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -41,7 +42,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div className="flex min-h-svh flex-col bg-background text-foreground transition-colors duration-200">
       <header className="sticky top-0 z-40 bg-nav text-nav-foreground">
         <div className="mx-auto flex h-12 w-full max-w-[1600px] items-center gap-4 px-4 sm:px-6">
           <Link
@@ -74,12 +75,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-2">
             <IdentitySwitcher me={me} />
+            <ThemeToggle />
             <button
               onClick={logout}
               title="Log out"
-              className="inline-flex size-7 items-center justify-center rounded-md text-nav-foreground/75 transition-colors hover:bg-white/10 hover:text-nav-foreground focus-visible:ring-2 focus-visible:ring-nav-foreground/60 outline-none"
+              className="inline-flex size-7 items-center justify-center rounded-md text-nav-foreground/75 transition-colors hover:bg-white/10 hover:text-nav-foreground focus-visible:ring-2 focus-visible:ring-nav-foreground/60 outline-none cursor-pointer"
             >
               <LogOut className="size-4" />
               <span className="sr-only">Log out</span>
@@ -92,9 +94,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      {/* Dark is forced: the app ships one theme, and sonner would otherwise
-          read prefers-color-scheme and render a light toast on a dark page. */}
-      <Toaster theme="dark" position="bottom-right" />
+      <Toaster position="bottom-right" />
     </div>
   )
 }
