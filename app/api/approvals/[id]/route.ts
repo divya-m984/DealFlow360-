@@ -11,13 +11,21 @@ type Ctx = { params: Promise<{ id: string }> }
 
 // ── GET /api/approvals/[id] ────────────────────────────────────────
 // Screen 6: the risk breakdown, the chain, and the audit trail.
-export const GET = withAuth<Ctx>(['sales_manager', 'finance', 'admin'], async (_req, _s, ctx) => {
+//
+// RBAC: a Sales Rep may READ this — PS §3, "tracks approval status" — but only
+// for a quotation they own, and the Approve/Return/Reject buttons on the
+// screen are driven by the POST below, which they cannot call. Reading why
+// their own deal was flagged is the point of the screen for them.
+export const GET = withAuth<Ctx>(
+  ['sales_rep', 'sales_manager', 'finance', 'admin'],
+  async (_req, session, ctx) => {
   const id = Number((await ctx.params).id)
 
   const [req] = await q(
     `SELECT a.*, qq.id AS q_id, qq.number, qq.version AS current_version,
             qq.risk_score, qq.risk_band, qq.grand_total, qq.margin_total, qq.currency_code,
             qq.requires_manager, qq.requires_finance, qq.state AS quotation_state,
+            qq.owner_user_id,
             c.name AS customer_name, t.name AS tier_name, t.max_discount_pct AS tier_ceiling_pct
        FROM approval_request a
        JOIN quotation qq    ON qq.id = a.quotation_id
@@ -27,6 +35,12 @@ export const GET = withAuth<Ctx>(['sales_manager', 'finance', 'admin'], async (_
     [id],
   )
   if (!req) return fail('Approval request not found', 404)
+
+  // A rep may only open approvals on their own quotations. Same 404 as a
+  // missing row — never confirm the existence of another rep's deal.
+  if (session.role === 'sales_rep' && req.owner_user_id !== session.userId) {
+    return fail('Approval request not found', 404)
+  }
 
   // "Why this quote was flagged" — the mockup's own columns.
   const breakdown = await q(

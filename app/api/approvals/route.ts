@@ -8,11 +8,23 @@ export const runtime = 'nodejs'
 // Only rows belonging to each quotation's CURRENT version are listed.
 // A superseded approval is not "pending" — it is dead, and showing it in a
 // manager's queue would invite someone to approve terms that no longer exist.
-export const GET = withAuth(['sales_manager', 'finance', 'admin'], async (req, session) => {
+//
+// RBAC: reading and acting are DIFFERENT rights here.
+//
+// PS §3 gives the Sales Rep "tracks approval status and fulfillment progress",
+// so a rep must be able to see this screen — they need to know whether their
+// own deal is stuck, and with whom. What they cannot do is ACT: POST on
+// /api/approvals/[id] stays manager/finance/admin.
+//
+// A rep is scoped to quotations they OWN, in the WHERE clause rather than by
+// filtering afterwards, so another rep's pipeline is never selected at all.
+export const GET = withAuth(['sales_rep', 'sales_manager', 'finance', 'admin'], async (req, session) => {
   const p = new URL(req.url).searchParams
   const where: string[] = ['a.quotation_version = qq.version']
   const args: unknown[] = []
   const bind = (v: unknown) => `$${args.push(v)}`
+
+  if (session.role === 'sales_rep') where.push(`qq.owner_user_id = ${bind(session.userId)}`)
 
   if (p.get('status')) where.push(`a.status = ${bind(p.get('status'))}::approval_status`)
   if (p.get('mine') === 'true') where.push(`a.assigned_to_user_id = ${bind(session.userId)}`)

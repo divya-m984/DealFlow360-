@@ -14,7 +14,16 @@ export const runtime = 'nodejs'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export const POST = withAuth<Ctx>(null, async (_req, session, { params }) => {
+// RBAC — PS §3: "Finance / Operations User: Manages warehouse fulfillment
+// splits and backorder decisions." Committing stock is an operations action,
+// not a sales one, so the WRITE endpoints are Finance and Admin.
+//
+// The READ endpoints stay open to every internal role: §3 also gives the Sales
+// Rep "tracks approval status and FULFILMENT PROGRESS" — they need to see
+// where their order is, they just do not get to move it.
+export const FULFIL_WRITE_ROLES = ['finance', 'admin'] as const
+
+export const POST = withAuth<Ctx>([...FULFIL_WRITE_ROLES], async (_req, session, { params }) => {
   const orderId = Number((await params).id)
   if (!Number.isFinite(orderId)) return fail('Invalid order id', 400)
 
