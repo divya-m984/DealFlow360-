@@ -25,6 +25,7 @@
 
 import type { PoolClient } from 'pg'
 import { CYCLE_INTERVAL, type BillingCycle } from './billing'
+import { BusinessRuleError } from './api'
 
 export type InvoiceStatus = 'unpaid' | 'partial' | 'paid' | 'void'
 
@@ -191,6 +192,22 @@ export async function applyPayment(
   invoiceId: number,
   p: { amount: number; method: 'bank' | 'cash' | 'card'; reference?: string | null },
 ): Promise<PaymentResult> {
+  // A DRAFT invoice has never been issued to the customer — it has no IRN,
+  // no legal existence, and nobody has agreed to pay it. Accepting money
+  // against one would create a payment with no document behind it, which is
+  // the mirror image of the bug this file exists to prevent (a document with
+  // no payment behind it). Post it first.
+  const draft = await c.query(
+    `SELECT number, posted_at FROM invoice WHERE id = $1`, [invoiceId],
+  )
+  if (draft.rowCount === 0) throw new Error(`No invoice with id ${invoiceId}`)
+  if (!draft.rows[0].posted_at) {
+    throw new BusinessRuleError(
+      `Invoice ${draft.rows[0].number} is still a draft and cannot take a payment. ` +
+      `Post it first — posting is what issues it to the customer.`,
+    )
+  }
+
   const inv = await c.query(
     `SELECT id, number, amount_total, status FROM invoice WHERE id = $1 FOR UPDATE`,
     [invoiceId],

@@ -33,6 +33,33 @@ export function fail(message: string, status = 400) {
  *
  * Tagging the error is enough — no route changes, no signature changes.
  */
+/**
+ * ⚠ ADDED BY D2 AFTER THE FREEZE — Integrator, sign-off please. Same family
+ * as ValidationError above, and the same bug one layer up.
+ *
+ * Handlers signal a refused BUSINESS RULE by throwing — "that order is
+ * cancelled", "this would breach the credit limit", "already invoiced". The
+ * catch below maps an unrecognised throw to 500, so every one of those
+ * answered `500 Server error` with a perfectly good business message attached.
+ *
+ * A refused rule is not a server fault. It is the system working: the request
+ * was understood, and declined. 409 Conflict is the honest code — the request
+ * conflicts with the current state of the resource, and retrying it unchanged
+ * will fail the same way.
+ *
+ * Plain `throw new Error(...)` is deliberately still mapped to 500. Converting
+ * every bare throw to 4xx would hide genuine faults, which is a worse failure
+ * than an over-cautious status. Lanes should opt in by using this class where
+ * the throw really is a rule.
+ */
+export class BusinessRuleError extends Error {
+  readonly status = 409
+  constructor(message: string) {
+    super(message)
+    this.name = 'BusinessRuleError'
+  }
+}
+
 export class ValidationError extends Error {
   readonly status = 400
   constructor(message: string) {
@@ -65,6 +92,8 @@ export function withAuth<C = unknown>(
       // A rejected BODY is the caller's fault, not the server's. Checked
       // before the generic branch so the zod message keeps its 400.
       if (e instanceof ValidationError) return fail(e.message, 400)
+      // A refused business rule is the system working, not failing.
+      if (e instanceof BusinessRuleError) return fail(e.message, 409)
       console.error('[api]', e)
       // Postgres CHECK / constraint violations arrive here.  Surface the
       // message rather than a bare 500 — "cannot_reserve_more_than_held" is

@@ -178,3 +178,87 @@ ALTER TABLE product
 --
 -- That is exactly the bug this comment exists to stop someone re-introducing
 -- by "tidying" the UPDATE back up next to its ALTER TABLE.
+
+-- ═════════════════════════════════════════════════════════════════════
+-- 5 · CREDIT MANAGEMENT — the thing an order-to-cash system does that a
+--     CRUD app does not
+-- ═════════════════════════════════════════════════════════════════════
+-- Nothing in this schema knew what a customer OWED us.  Every ERP ships
+-- this (Odoo puts credit_limit on res.partner) because it is the control
+-- that stops a sales team selling a company into a bad debt: exposure is
+-- unpaid invoices PLUS orders already confirmed but not yet billed, and a
+-- new deal that would breach the limit has to be refused or escalated.
+--
+-- NULL credit_limit means UNLIMITED, deliberately, rather than 0 meaning
+-- unlimited.  0 is a real and useful value — a customer on stop, cash in
+-- advance only — and a schema where the "no limit" sentinel collides with
+-- the strictest possible limit will eventually let someone through.
+ALTER TABLE customer
+  ADD COLUMN IF NOT EXISTS credit_limit numeric(14,2)
+    CHECK (credit_limit IS NULL OR credit_limit >= 0);
+
+-- Net terms. Drives the due date on every invoice and therefore the aging
+-- buckets. 30 is the ordinary Indian B2B default.
+ALTER TABLE customer
+  ADD COLUMN IF NOT EXISTS payment_terms_days smallint NOT NULL DEFAULT 30
+    CHECK (payment_terms_days BETWEEN 0 AND 180);
+
+-- A deliberate, recorded decision to let one deal through over the limit.
+-- Without this the only options are "block" and "raise the limit forever",
+-- and people always choose the second, which quietly destroys the control.
+ALTER TABLE customer
+  ADD COLUMN IF NOT EXISTS credit_hold boolean NOT NULL DEFAULT false;
+
+-- ═════════════════════════════════════════════════════════════════════
+-- 6 · DOCUMENT STATES — a posted invoice is immutable
+-- ═════════════════════════════════════════════════════════════════════
+-- "Can you edit a posted invoice?" is a question every ERP reviewer asks,
+-- and the only correct answer is no: you reverse it with a credit note and
+-- issue a new one.  Editing a document a customer has already received —
+-- and a tax authority may already have seen — is how accounting fraud
+-- looks from the inside, which is why every accounting system in the world
+-- forbids it.
+--
+-- Until now `invoice` had no draft/posted distinction at all: rows were
+-- created final, and nothing stopped an UPDATE.
+ALTER TABLE invoice
+  ADD COLUMN IF NOT EXISTS posted_at timestamptz;
+
+ALTER TABLE invoice
+  ADD COLUMN IF NOT EXISTS posted_by_user_id bigint REFERENCES app_user(id) ON DELETE SET NULL;
+
+-- ── GST e-INVOICING, computed at POSTING ────────────────────────────
+-- Under Rule 48(5) a notified taxpayer registers a B2B invoice on the IRP
+-- and receives an Invoice Reference Number: a 64-character SHA-256 hash of
+-- supplier GSTIN + document number + document type + financial year.  That
+-- hash is the part we can compute exactly and honestly offline; the portal
+-- registration and its signed QR image are not something to fake.
+--
+-- Posting is the right moment for it, because the IRN is a function of the
+-- document IDENTITY, and identity is exactly what becomes immutable when a
+-- document is posted.  Computing it earlier would mean recomputing it every
+-- time a draft changed.
+ALTER TABLE invoice
+  ADD COLUMN IF NOT EXISTS gst_irn char(64);
+
+ALTER TABLE invoice
+  ADD COLUMN IF NOT EXISTS gst_ack_no text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS invoice_gst_irn_key
+  ON invoice (gst_irn) WHERE gst_irn IS NOT NULL;
+
+-- The supplier's own GSTIN. One row per deployment in practice, but it
+-- belongs on the company that issues the document, and we have no company
+-- table — so it is configuration read from the environment and stored on
+-- the invoice at posting, which is also what makes the IRN reproducible
+-- years later when the setting has changed.
+ALTER TABLE invoice
+  ADD COLUMN IF NOT EXISTS supplier_gstin char(15);
+
+-- A credit note that REVERSES a posted invoice, as opposed to the
+-- subscription-cancellation credit notes that already existed.
+ALTER TABLE credit_note
+  ADD COLUMN IF NOT EXISTS is_reversal boolean NOT NULL DEFAULT false;
+
+ALTER TABLE credit_note
+  ADD COLUMN IF NOT EXISTS issued_by_user_id bigint REFERENCES app_user(id) ON DELETE SET NULL;

@@ -20,6 +20,7 @@ import { Money } from '@/components/shared/money'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { ErrorState } from '@/components/shared/error-state'
 import { EmptyState } from '@/components/shared/empty-state'
+import { InvoicePosting } from '@/components/billing/invoice-posting'
 import {qty as fq, date as fd } from '@/components/billing/format'
 import { downloadInvoicePdf } from '@/components/billing/invoice-pdf'
 
@@ -259,6 +260,10 @@ export default function InvoiceDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Document states, GST reference and the credit-note reversal path.
+          canPay is finance/admin, the same allow-list both endpoints use. */}
+      <InvoicePosting invoice={inv} canWrite={canPay} onChanged={load} />
     </div>
   )
 }

@@ -128,8 +128,18 @@ them a second time** — which is the whole point of this document.
 | `lib/alerts.ts`, `app/api/alerts/scan/**`, `components/admin/alert-scan.tsx` | **D2** | CLAIMED. **Live deal-alert detection.** Before this, the only INSERTs into `deal_alert` anywhere in the repo were in `db/seed/05-quotations.sql` and `06-orders.sql` — every alert a judge ever saw on screen 14 was a fixture. The detector writes into the same table D1's `GET /api/deal-alerts` already reads, so **neither D1's route nor D3's screen changed**. Idempotent: `one_open_alert_per_kind` is a partial unique index, so re-scanning refreshes an alert's detail instead of duplicating it. It also auto-resolves — an alert whose condition stops being true closes itself, which is what stops the screen becoming a list nobody clears. |
 | ⚠ `app/(app)/deal-health/page.tsx` | **D3 — 2 additions by D2** | An import and `<AlertScan onDone={retry} />`. Self-contained; delete both to remove it. |
 | `components/fulfilment/search-trace.tsx`, `components/fulfilment/concurrency-probe.tsx`, `app/api/fulfilment/integrity/**` | **D2** | **The allocator, made attackable.** `lib/allocate.ts` now returns a `SearchTrace` — every warehouse set it examined, what each would have cost, why each lost, and what a naive greedy would have done instead. The probe fires N simultaneous reservations at the real endpoint and asserts on work committed, not HTTP status. `Q-1029` (MOUSE x40) is seeded in `06-orders.sql` specifically to spring the greedy trap `04-stock.sql` has always armed. |
+| `lib/credit.ts`, `app/api/credit/**`, `components/billing/aging-bars.tsx` | **D2** | CLAIMED. **Credit control.** Nothing in the schema knew what a customer OWED us. Exposure = unpaid posted invoices + delivered-but-unbilled + committed orders − credit notes, and `POST /api/orders` now REFUSES a confirmation that would breach the limit or touch a held account. Ageing buckets, DSO and a utilisation gauge on top. |
+| `app/api/invoices/[id]/post/**`, `app/api/invoices/[id]/credit-note/**`, `components/billing/invoice-posting.tsx` | **D2** | CLAIMED. **Document states.** A posted invoice is immutable; corrections are credit notes, not edits. Posting computes the GST IRN with the real IRP algorithm (SHA-256 over supplier GSTIN + doc number + doc type + financial year) and says plainly that it is *not* portal-registered. Draft invoices cannot take payments. |
+| ⚠ `app/(app)/credit/page.tsx` | **D3 by the map — WRITTEN BY D2** | New file, so no conflict. The receivables board. Restyle or absorb it freely. |
+| ⚠ `components/shared/nav-groups.ts` | **D3 — 2-line addition by D2** | A `/credit` entry under Admin, so the new screen is reachable without typing the URL — the exact failure `/settings` already had once. |
 
 ### ⚠ TWO changes to FROZEN files
+
+**0. `lib/api.ts` — `BusinessRuleError` → 409.** Handlers signal a refused rule by
+throwing ("that order is cancelled", "this breaches the credit limit"), and the catch
+mapped every unrecognised throw to 500 — so a working business rule looked like a server
+crash. Plain `throw new Error` is still 500 on purpose: converting every bare throw to
+4xx would hide genuine faults. Lanes opt in where the throw really is a rule.
 
 **1. `lib/api.ts` — every validation error in the app returned HTTP 500.**
 `parseBody()` threw a plain `Error`; `withAuth()`'s catch maps an unrecognised throw

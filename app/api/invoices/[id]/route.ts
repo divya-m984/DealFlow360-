@@ -14,6 +14,9 @@ export const GET = withAuth<Ctx>(null, async (_req, _session, { params }) => {
     `SELECT i.id, i.number, i.customer_id, cu.name AS customer_name, cu.email AS customer_email,
             i.order_id, o.number AS order_number, o.state AS order_state, i.subscription_id,
             i.kind, i.currency_code, i.amount_total, i.status, i.issue_date, i.due_date, i.created_at,
+            i.posted_at, i.gst_irn, i.gst_ack_no, i.supplier_gstin, i.is_partial, i.sequence_no,
+            pu.full_name AS posted_by_name,
+            COALESCE(cnx.credited, 0) AS amount_credited,
             COALESCE(p.paid, 0)                    AS amount_paid,
             (i.amount_total - COALESCE(p.paid, 0)) AS amount_due,
             (i.due_date < CURRENT_DATE AND i.status NOT IN ('paid','void')) AS is_overdue,
@@ -23,6 +26,8 @@ export const GET = withAuth<Ctx>(null, async (_req, _session, { params }) => {
        LEFT JOIN sales_order o ON o.id = i.order_id
        LEFT JOIN subscription s ON s.id = i.subscription_id
        LEFT JOIN subscription_plan sp ON sp.id = s.plan_id
+       LEFT JOIN app_user pu ON pu.id = i.posted_by_user_id
+       LEFT JOIN LATERAL (SELECT SUM(amount) AS credited FROM credit_note WHERE invoice_id = i.id) cnx ON true
        LEFT JOIN LATERAL (SELECT SUM(amount) AS paid FROM payment WHERE invoice_id = i.id) p ON true
       WHERE i.id = $1`,
     [id],
