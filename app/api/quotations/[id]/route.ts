@@ -3,8 +3,7 @@ import { z } from 'zod'
 import { q, tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
 import { recomputeQuotation, audit } from '@/lib/quotation'
-import { isApproved } from '@/lib/approval'
-import { db } from '@/lib/db'
+import { isApproved, IS_APPROVED_SQL } from '@/lib/approval'
 
 export const runtime = 'nodejs'
 
@@ -13,13 +12,26 @@ type Ctx = { params: Promise<{ id: string }> }
 
 // ── GET /api/quotations/[id] ───────────────────────────────────────
 // Screen-shaped: the builder needs the quotation, its lines, the approval
-// chain for the CURRENT version, and the audit trail, in one round trip.
+// chain for the CURRENT version, and the audit trail.
+//
+// This is the most-clicked endpoint in the app, so it is deliberately built to
+// touch the database as little as possible:
+//
+//   • the approval VERDICT rides along on the head query via IS_APPROVED_SQL,
+//     rather than being a second question about the same table.  Asking for
+//     the chain and then separately asking "is it approved" is two reads of
+//     approval_request for one screen.
+//   • the head query runs first (it is the 404 gate); the three independent
+//     reads then run CONCURRENTLY rather than one after another.
+//   • nothing checks out a pool client.  isApproved() accepts the pool, so a
+//     read-only handler never holds a connection it does not need.
 export const GET = withAuth<Ctx>([...INTERNAL], async (_req, _session, ctx) => {
   const id = Number((await ctx.params).id)
 
   const [head] = await q(
     `SELECT q.*, c.name AS customer_name, c.tier_id, t.name AS tier_name,
-            t.max_discount_pct AS tier_ceiling_pct, u.full_name AS owner_name
+            t.max_discount_pct AS tier_ceiling_pct, u.full_name AS owner_name,
+            ${IS_APPROVED_SQL} AS is_approved
        FROM quotation q
        JOIN customer c      ON c.id = q.customer_id
        JOIN customer_tier t ON t.id = c.tier_id
@@ -29,8 +41,9 @@ export const GET = withAuth<Ctx>([...INTERNAL], async (_req, _session, ctx) => {
   )
   if (!head) return fail('Quotation not found', 404)
 
-  const lines = await q(
-    `SELECT l.*, p.name AS product_name, p.sku, cat.name AS category_name,
+  const [lines, approvals, auditTrail] = await Promise.all([
+    q(
+      `SELECT l.*, p.name AS product_name, p.sku, cat.name AS category_name,
             v.sku AS variant_sku, sp.name AS plan_name, sp.cycle AS plan_cycle
        FROM quotation_line l
        JOIN product p            ON p.id = l.product_id
@@ -39,39 +52,39 @@ export const GET = withAuth<Ctx>([...INTERNAL], async (_req, _session, ctx) => {
        LEFT JOIN subscription_plan sp ON sp.id = l.subscription_plan_id
       WHERE l.quotation_id = $1
       ORDER BY l.line_no`,
-    [id],
-  )
+      [id],
+    ),
 
-  // Only the CURRENT version's chain. Superseded rows still exist in the
-  // table — they are history, not state.
-  const approvals = await q(
-    `SELECT a.*, u.full_name AS assigned_to_name, ac.full_name AS acted_by_name
+    // Only the CURRENT version's chain. Superseded rows still exist in the
+    // table — they are history, not state.
+    q(
+      `SELECT a.*, u.full_name AS assigned_to_name, ac.full_name AS acted_by_name
        FROM approval_request a
        JOIN quotation qq ON qq.id = a.quotation_id
        LEFT JOIN app_user u  ON u.id = a.assigned_to_user_id
        LEFT JOIN app_user ac ON ac.id = a.acted_by_user_id
       WHERE a.quotation_id = $1 AND a.quotation_version = qq.version
       ORDER BY a.seq`,
-    [id],
-  )
+      [id],
+    ),
 
-  const auditTrail = await q(
-    `SELECT a.*, u.full_name AS actor_name
+    q(
+      `SELECT a.*, u.full_name AS actor_name
        FROM audit_log a LEFT JOIN app_user u ON u.id = a.actor_user_id
       WHERE a.entity_type = 'quotation' AND a.entity_id = $1
       ORDER BY a.created_at DESC`,
-    [id],
-  )
+      [id],
+    ),
+  ])
 
-  const c = await db.connect()
-  let approved: boolean
-  try {
-    approved = await isApproved(c, id)
-  } finally {
-    c.release()
-  }
-
-  return ok({ quotation: head, lines, approvals, auditTrail, isApproved: approved })
+  return ok({
+    quotation: head,
+    lines,
+    approvals,
+    auditTrail,
+    // Came back on the head query — no second read of approval_request.
+    isApproved: head.is_approved,
+  })
 })
 
 // ── PATCH /api/quotations/[id] ─────────────────────────────────────

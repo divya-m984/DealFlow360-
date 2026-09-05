@@ -32,25 +32,40 @@ import type { ApprovalLevel, ApprovalRequest, ApprovalStatus } from './types/quo
  *  3. A `rejected` or `returned` row blocks approval even if the other level
  *     approved.
  */
-export async function isApproved(c: PoolClient, quotationId: number): Promise<boolean> {
+/**
+ * The rule, as one reusable SQL expression.
+ *
+ * Exported so a handler that is ALREADY selecting from `quotation q` can fold
+ * the verdict into that query instead of asking the database a second time.
+ * There is exactly one copy of this text in the codebase — two copies would
+ * drift, and a governance rule that disagrees with itself is worse than a slow
+ * one.  It expects the quotation to be aliased `q`.
+ */
+export const IS_APPROVED_SQL = `
+  (NOT q.requires_manager OR EXISTS (
+     SELECT 1 FROM approval_request a
+      WHERE a.quotation_id = q.id AND a.quotation_version = q.version
+        AND a.level = 'sales_manager' AND a.status = 'approved'))
+  AND
+  (NOT q.requires_finance OR EXISTS (
+     SELECT 1 FROM approval_request a
+      WHERE a.quotation_id = q.id AND a.quotation_version = q.version
+        AND a.level = 'finance' AND a.status = 'approved'))
+  AND NOT EXISTS (
+     SELECT 1 FROM approval_request a
+      WHERE a.quotation_id = q.id AND a.quotation_version = q.version
+        AND a.status IN ('rejected','returned'))`
+
+/**
+ * Accepts a Pool or a PoolClient. Inside a transaction pass the client so the
+ * check sees uncommitted writes; outside one, pass the pool directly rather
+ * than checking out a connection just for this.
+ */
+type Queryable = Pick<PoolClient, 'query'>
+
+export async function isApproved(c: Queryable, quotationId: number): Promise<boolean> {
   const { rows } = await c.query<{ is_approved: boolean }>(
-    `SELECT
-       (NOT q.requires_manager OR EXISTS (
-          SELECT 1 FROM approval_request a
-           WHERE a.quotation_id = q.id AND a.quotation_version = q.version
-             AND a.level = 'sales_manager' AND a.status = 'approved'))
-       AND
-       (NOT q.requires_finance OR EXISTS (
-          SELECT 1 FROM approval_request a
-           WHERE a.quotation_id = q.id AND a.quotation_version = q.version
-             AND a.level = 'finance' AND a.status = 'approved'))
-       AND NOT EXISTS (
-          SELECT 1 FROM approval_request a
-           WHERE a.quotation_id = q.id AND a.quotation_version = q.version
-             AND a.status IN ('rejected','returned'))
-       AS is_approved
-     FROM quotation q
-     WHERE q.id = $1`,
+    `SELECT ${IS_APPROVED_SQL} AS is_approved FROM quotation q WHERE q.id = $1`,
     [quotationId],
   )
   if (rows.length === 0) throw new Error(`Quotation ${quotationId} not found`)

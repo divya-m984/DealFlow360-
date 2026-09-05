@@ -104,7 +104,14 @@ export const POST = withAuth<Ctx>(['sales_manager', 'finance', 'admin'], async (
       // Back to the rep. The version does NOT bump here — the terms have not
       // changed yet. It bumps when the rep actually edits something.
       await c.query(`UPDATE quotation SET state = 'draft' WHERE id = $1`, [qid])
-    } else if (await isApproved(c, qid)) {
+    }
+
+    // Asked ONCE and reused. The verdict cannot change between the branch
+    // below and the response — nothing here writes approval_request — so
+    // running the query twice was pure waste.
+    const approvedNow = body.status === 'approved' ? await isApproved(c, qid) : false
+
+    if (approvedNow) {
       // Every required level has now signed at this version.
       await c.query(
         `UPDATE quotation SET state = 'approved', approved_at = now() WHERE id = $1`,
@@ -116,6 +123,6 @@ export const POST = withAuth<Ctx>(['sales_manager', 'finance', 'admin'], async (
     // else: manager signed but finance has not — stays pending_approval.
 
     const { rows: fresh } = await c.query(`SELECT * FROM quotation WHERE id = $1`, [qid])
-    return ok({ approval: acted, quotation: fresh[0], isApproved: await isApproved(c, qid) })
+    return ok({ approval: acted, quotation: fresh[0], isApproved: approvedNow })
   })
 })
