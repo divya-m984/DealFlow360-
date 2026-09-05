@@ -259,36 +259,31 @@ export default function QuotationDetailPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           {editable ? (
-                            <Input
-                              className="ml-auto h-8 w-20 text-right tabular-nums"
-                              defaultValue={Number(l.qty)}
+                            <NumberField
+                              value={l.qty}
                               disabled={busy}
-                              onBlur={(e) => {
-                                const v = Number(e.target.value)
-                                if (v > 0 && v !== Number(l.qty)) {
-                                  mutate(`/api/quotations/${id}/lines/${l.id}`,
-                                    { method: 'PATCH', body: JSON.stringify({ qty: v }) },
-                                    `Line ${l.line_no} quantity updated.`)
-                                }
-                              }}
+                              valid={(v) => v > 0}
+                              onCommit={(v) =>
+                                mutate(`/api/quotations/${id}/lines/${l.id}`,
+                                  { method: 'PATCH', body: JSON.stringify({ qty: v }) },
+                                  `Line ${l.line_no} quantity updated.`)
+                              }
                             />
                           ) : <Num value={l.qty} />}
                         </TableCell>
                         <TableCell className="text-right"><Money value={l.unit_price} currency={cur} /></TableCell>
                         <TableCell className="text-right">
                           {editable ? (
-                            <Input
-                              className="ml-auto h-8 w-20 text-right tabular-nums"
-                              defaultValue={Number(l.discount_pct)}
+                            <NumberField
+                              value={l.discount_pct}
                               disabled={busy}
-                              onBlur={(e) => {
-                                const v = Number(e.target.value)
-                                if (v >= 0 && v <= 100 && v !== Number(l.discount_pct)) {
-                                  mutate(`/api/quotations/${id}/lines/${l.id}`,
-                                    { method: 'PATCH', body: JSON.stringify({ discountPct: v }) },
-                                    `Line ${l.line_no} discount set to ${v}%.`)
-                                }
-                              }}
+                              suffix="%"
+                              valid={(v) => v >= 0 && v <= 100}
+                              onCommit={(v) =>
+                                mutate(`/api/quotations/${id}/lines/${l.id}`,
+                                  { method: 'PATCH', body: JSON.stringify({ discountPct: v }) },
+                                  `Line ${l.line_no} discount set to ${v}%.`)
+                              }
                             />
                           ) : `${Number(l.discount_pct).toFixed(2)}%`}
                         </TableCell>
@@ -488,6 +483,60 @@ export default function QuotationDetailPage() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  )
+}
+
+/**
+ * A CONTROLLED numeric cell that commits on blur or Enter.
+ *
+ * It has to be controlled. With `defaultValue` on an uncontrolled input, React
+ * ignores the prop once the field is mounted — so after a line edit refetches
+ * the quotation, the cell keeps showing what was typed rather than what the
+ * server actually stored. Base UI warns about exactly this. Worse, a rejected
+ * edit (over 100%, a confirmed quotation) would leave the bad number sitting
+ * on screen as if it had been saved.
+ *
+ * `draft` holds what the user is typing; the server value flows back in
+ * whenever it changes, which also reverts the field when an edit is refused.
+ */
+function NumberField({
+  value, onCommit, valid, disabled, suffix,
+}: {
+  value: string | number
+  onCommit: (v: number) => void
+  valid: (v: number) => boolean
+  disabled?: boolean
+  suffix?: string
+}) {
+  const server = Number(value)
+  const [draft, setDraft] = useState(String(server))
+
+  // Re-sync when the server value changes — after a successful edit, and after
+  // a rejected one (where it snaps back to the truth).
+  useEffect(() => { setDraft(String(server)) }, [server])
+
+  function commit() {
+    const v = Number(draft)
+    if (!Number.isFinite(v) || !valid(v)) return setDraft(String(server))
+    if (v === server) return
+    onCommit(v)
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <Input
+        className="h-8 w-20 text-right tabular-nums"
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') setDraft(String(server))
+        }}
+      />
+      {suffix && <span className="text-xs text-muted-foreground">{suffix}</span>}
     </div>
   )
 }
