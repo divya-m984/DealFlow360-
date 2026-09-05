@@ -2,7 +2,20 @@
 //
 // pg is imported ONLY inside app/api/**.  Never from a page or a component.
 
-import { Pool, type PoolClient } from 'pg'
+import { Pool, types, type PoolClient } from 'pg'
+
+// pg returns bigint (OID 20) as a STRING to avoid precision loss.  Every id in
+// this schema is `bigint GENERATED ALWAYS AS IDENTITY`, so without this every
+// id arrives as "1" rather than 1 — and a strict comparison like
+// `session.customerId === quotation.customer_id` is then ALWAYS false.
+// That check is how the portal is row-scoped (PS §7), so this matters.
+// Our ids are nowhere near 2^53; parsing to a number is safe.
+types.setTypeParser(types.builtins.INT8, (v) => parseInt(v, 10))
+
+// NOTE: numeric (OID 1700) is deliberately LEFT as a string.  It carries money,
+// and parsing it to a float would reintroduce the rounding error that
+// numeric(14,2) exists to prevent.  Format it for display; never parseFloat it
+// and write it back.
 
 // Next's hot reload re-evaluates modules on every recompile.  Without this
 // cache you get a new Pool per recompile and exhaust Postgres connections by
