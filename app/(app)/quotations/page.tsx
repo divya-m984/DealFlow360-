@@ -1,8 +1,8 @@
 // OWNER: D3.  Screen 3 — Quotations.
 //
-// PHASE 1: the table view only.  This screen is the template the other seven
-// list screens are cloned from, so it is deliberately thin: fetch, columns,
-// <DataTable>, row click.  Everything else lives in the shared components.
+// PHASE 1/2: the table view only.  This screen is the template the other seven
+// list screens are cloned from, so it is deliberately thin: columns,
+// useListData, <DataTable>, row click.
 //
 // NOT YET BUILT (Phase 3): the kanban pipeline view (Draft / Pending Approval /
 // Approved / Negotiation / Confirmed) and the "Switch to Table View" toggle.
@@ -14,17 +14,16 @@
 // crashing the list.
 'use client'
 
-import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import {
   createDataTableColumns,
   DataTable,
   type DataTableColumns,
 } from '@/components/data-table'
-import { Money } from '@/components/shared/money'
+import { DateValue, Money, Num } from '@/components/shared/money'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge } from '@/components/shared/status-badge'
-import { type ApiError } from '@/components/shared/error-state'
+import { useListData } from '@/components/shared/use-list-data'
 
 type QuotationRow = {
   id: number
@@ -39,21 +38,6 @@ type QuotationRow = {
   owner_name?: string
   last_activity_at?: string
   created_at?: string
-}
-
-// pg returns timestamptz as an ISO string.  One date format for the whole
-// screen; Phase 2 should lift this into components/shared/ once the other
-// seven lists need it too.
-const dateFormat = new Intl.DateTimeFormat('en-IN', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-})
-
-function formatDate(value: string | undefined) {
-  if (!value) return null
-  const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? null : dateFormat.format(d)
 }
 
 function Muted() {
@@ -116,79 +100,25 @@ const columns: DataTableColumns<QuotationRow> = col.columns([
     meta: { align: 'right' },
     cell: ({ row }) =>
       row.original.version ? (
-        <span className="text-muted-foreground">v{row.original.version}</span>
+        <Num value={row.original.version} className="text-muted-foreground" />
       ) : (
         <Muted />
       ),
   }),
   col.accessor('last_activity_at', {
     header: 'Last activity',
-    cell: ({ row }) => {
-      const text = formatDate(row.original.last_activity_at)
-      return text ? (
-        <span className="whitespace-nowrap text-muted-foreground">{text}</span>
-      ) : (
-        <Muted />
-      )
-    },
+    cell: ({ row }) => (
+      <DateValue
+        value={row.original.last_activity_at}
+        className="text-muted-foreground"
+      />
+    ),
   }),
 ])
 
 export default function QuotationsPage() {
   const router = useRouter()
-  const [rows, setRows] = React.useState<QuotationRow[] | undefined>(undefined)
-  const [error, setError] = React.useState<ApiError | null>(null)
-  const [loading, setLoading] = React.useState(true)
-  const [reloadToken, setReloadToken] = React.useState(0)
-
-  // The "request is starting" state is set by whoever starts the request —
-  // initial state below, or the retry handler.  Writing it synchronously in
-  // the effect body is what react-hooks/set-state-in-effect forbids.
-  React.useEffect(() => {
-    let cancelled = false
-
-    fetch('/api/quotations', { headers: { accept: 'application/json' } })
-      .then(async (res) => {
-        // Every response is { data } or { error: { message } } (lib/api.ts).
-        const body = await res.json().catch(() => null)
-        if (cancelled) return
-
-        if (!res.ok || body?.error) {
-          setError({
-            message: body?.error?.message ?? `Request failed (HTTP ${res.status}).`,
-          })
-          setRows(undefined)
-          return
-        }
-        if (!Array.isArray(body?.data)) {
-          setError({
-            message:
-              'Unexpected response from /api/quotations — expected { data: [ … ] }.',
-          })
-          setRows(undefined)
-          return
-        }
-        setRows(body.data as QuotationRow[])
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError({ message: e?.message ?? 'Could not reach /api/quotations.' })
-        setRows(undefined)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [reloadToken])
-
-  function retry() {
-    setLoading(true)
-    setError(null)
-    setReloadToken((n) => n + 1)
-  }
+  const { rows, loading, error, retry } = useListData<QuotationRow>('/api/quotations')
 
   return (
     <>
