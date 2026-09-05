@@ -244,7 +244,13 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
 
+/** lib/db.ts parses `date` as a string, so this is normally a passthrough.
+ *  The Date branch builds from LOCAL components — toISOString() would convert
+ *  a local-midnight date to UTC and land on the previous day. */
 function fmtDate(d: Date | string): string {
-  const s = d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10)
-  return s
+  if (d instanceof Date) {
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  }
+  return String(d).slice(0, 10)
 }

@@ -394,5 +394,29 @@ export async function recomputeOrderState(c: PoolClient, orderId: number): Promi
       RETURNING o.state`,
     [orderId],
   )
-  return r.rows[0]?.state
+  const state = r.rows[0]?.state
+
+  // A delivery-slippage alert is raised because an order is late.  Once it
+  // ships, the alert is answered — leaving it open means screen 14 keeps
+  // showing a warning about an order that is already out of the door, and a
+  // dashboard that cries wolf is worse than no dashboard.
+  //
+  // Only THIS kind is resolved here: 'stalled' and 'discount_anomaly' are about
+  // the quotation, and D1 owns when those stop being true.
+  if (state === 'fulfilled') {
+    await c.query(
+      `UPDATE deal_alert da
+          SET resolved_at = now(),
+              last_action = 'Order shipped in full',
+              last_action_at = now()
+         FROM sales_order o
+        WHERE o.id = $1
+          AND da.quotation_id = o.quotation_id
+          AND da.kind = 'delivery_slippage'
+          AND da.resolved_at IS NULL`,
+      [orderId],
+    )
+  }
+
+  return state
 }

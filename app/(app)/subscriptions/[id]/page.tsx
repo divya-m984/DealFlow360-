@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Money, qty as fq, date as fd } from '@/components/billing/format'
+import { Money, qty as fq, date as fd, localDate } from '@/components/billing/format'
 
 const CHANGE_ROLES = ['sales_manager', 'finance', 'admin']
 
@@ -123,9 +123,9 @@ export default function SubscriptionDetailPage() {
         </CardContent>
       </Card>
 
-      {active && canChange && (
+      {sub.status !== 'cancelled' && canChange && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
+          <Card className={active ? '' : 'opacity-60'}>
             <CardHeader>
               <CardTitle className="text-base">Change mid-cycle</CardTitle>
               <CardDescription>Writes one immutable ledger row. A negative delta becomes a credit note.</CardDescription>
@@ -155,7 +155,7 @@ export default function SubscriptionDetailPage() {
                   <Input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} />
                 </div>
               </div>
-              <Button disabled={busy} onClick={() => post('change', {
+              <Button disabled={busy || !active} onClick={() => post('change', {
                 newQty: Number(newQty),
                 newPlanId: Number(newPlan),
                 ...(effective ? { effectiveDate: effective } : {}),
@@ -170,14 +170,32 @@ export default function SubscriptionDetailPage() {
               <CardTitle className="text-base">Billing actions</CardTitle>
               <CardDescription>
                 Refund policy on this plan is <strong>{sub.cancellation_refund}</strong>
-                {sub.cancellation_notice_days > 0 && <> with {sub.cancellation_notice_days} days notice</>}.
+                {sub.cancellation_notice_days > 0 && (
+                  <> with <strong>{sub.cancellation_notice_days} days notice</strong> — cancelling
+                  today takes effect on {localDate(new Date(Date.now() + sub.cancellation_notice_days * 864e5))},
+                  and only the days after that are refunded</>
+                )}.
+                {' '}Pausing stops future billing without refunding the current period.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
-              <Button variant="outline" disabled={busy}
-                onClick={() => post('invoice', {}, 'Period invoiced and rolled forward.')}>
-                Invoice this period
-              </Button>
+              {active ? (
+                <>
+                  <Button variant="outline" disabled={busy}
+                    onClick={() => post('invoice', {}, 'Period invoiced and rolled forward.')}>
+                    Invoice this period
+                  </Button>
+                  <Button variant="secondary" disabled={busy}
+                    onClick={() => post('pause', {}, 'Paused. No further billing until it is resumed.')}>
+                    Pause
+                  </Button>
+                </>
+              ) : (
+                <Button variant="secondary" disabled={busy}
+                  onClick={() => post('resume', {}, 'Resumed on a fresh period.')}>
+                  Resume
+                </Button>
+              )}
               <Button variant="destructive" disabled={busy}
                 onClick={() => post('cancel', effective ? { effectiveDate: effective } : {}, 'Cancelled.')}>
                 Cancel subscription

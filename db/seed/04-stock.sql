@@ -17,9 +17,15 @@
 -- unlimited stock, and §7 says the warehouse split must be real.  These three
 -- products make every branch of lib/allocate.ts fire on seeded data:
 --
---   Laptop Pro 14   MAIN 27 · EAST 4   (31 total)
---       a 30-unit line MUST split 27 + 3       → strategy 'min_shipments'
---       a 40-unit line leaves 9 on backorder   → strategy 'backorder_only'
+--   Laptop Pro 14   MAIN 18 · EAST 10  (28 total)
+--       TUNED TO D1'S SEEDED QUOTATION.  Q-1028 is the one confirmed quotation
+--       in db/seed/05-quotations.sql and its first line is LP14 x 25.  With 27
+--       at MAIN that line fitted one warehouse and the split NEVER FIRED on
+--       seeded data — screen 8 opened empty of the feature it exists for.
+--       Neither warehouse can cover 25 alone now, so it must split 18 + 7.
+--       ⚠ If D1 changes that quantity, retune these two numbers.
+--       a 25-unit line MUST split 18 + 7        → strategy 'min_shipments'
+--       anything over 28 leaves a backorder     → strategy 'backorder_only'
 --
 --   Docking Station MAIN 18 · EAST 6
 --       a 15-unit line fits MAIN alone         → strategy 'single_warehouse'
@@ -52,9 +58,9 @@
 BEGIN;
 
 INSERT INTO stock_level (warehouse_id, product_id, variant_id, qty_on_hand, qty_reserved, reorder_point, reorder_qty) VALUES
-  -- Laptop Pro 14 — forces a split, and a backorder above 31 units
-  ((SELECT id FROM warehouse WHERE code='MAIN'), (SELECT id FROM product WHERE sku='LP14'),  NULL, 27.000, 0.000, 20.000,  40.000),
-  ((SELECT id FROM warehouse WHERE code='EAST'), (SELECT id FROM product WHERE sku='LP14'),  NULL,  4.000, 0.000, 10.000,  20.000),
+    -- Laptop Pro 14 — forces a split on the seeded order, backorder above 28
+  ((SELECT id FROM warehouse WHERE code='MAIN'), (SELECT id FROM product WHERE sku='LP14'),  NULL, 18.000, 0.000, 20.000,  40.000),
+  ((SELECT id FROM warehouse WHERE code='EAST'), (SELECT id FROM product WHERE sku='LP14'),  NULL, 10.000, 0.000, 10.000,  20.000),
 
   -- Docking Station — the single-warehouse case
   ((SELECT id FROM warehouse WHERE code='MAIN'), (SELECT id FROM product WHERE sku='DOCK'),  NULL, 18.000, 0.000, 15.000,  30.000),

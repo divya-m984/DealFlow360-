@@ -103,6 +103,8 @@ export async function rollPeriod(c: PoolClient, subscriptionId: number): Promise
 
 export type ProrationResult = {
   eventId: number
+  /** True when the billing cycle itself changed and the period was re-anchored. */
+  cycleChanged?: boolean
   deltaAmount: number
   daysRemaining: number
   daysInPeriod: number
@@ -126,7 +128,7 @@ export async function applyProration(
   const cur = await c.query(
     `SELECT s.id, s.customer_id, s.qty, s.plan_id, s.status,
             s.current_period_start, s.current_period_end,
-            p.price AS plan_price, p.proration_enabled
+            p.price AS plan_price, p.proration_enabled, p.cycle AS plan_cycle
        FROM subscription s
        JOIN subscription_plan p ON p.id = s.plan_id
       WHERE s.id = $1
@@ -149,6 +151,22 @@ export async function applyProration(
 
   const eventType = change.newPlanId && change.newPlanId !== Number(s.plan_id) ? 'plan_change' : 'qty_change'
 
+  // ── MOVING BETWEEN CYCLES IS NOT THE SAME OPERATION ──────────────
+  // Monthly → quarterly is not "the same period at a different rate".  If the
+  // period is left alone, the customer is charged a QUARTER's money prorated
+  // across the 21 days left of a MONTH, and then billed the full quarter again
+  // when next_bill_date arrives three weeks later.  That is double billing, and
+  // it is invisible until someone reads the invoices side by side.
+  //
+  // So a cycle change is handled the way Stripe describes it: credit the unused
+  // remainder of the old plan, then START A NEW PERIOD on the effective date.
+  // The new plan's first full period is billed normally, by the billing action,
+  // not smuggled into a proration row.
+  //
+  // A same-cycle change — or a quantity change — keeps the period and takes the
+  // blended delta, which is correct for those and simpler to read.
+  const cycleChanged = String(np.rows[0].cycle) !== String(s.plan_cycle)
+
   // Both day counts come from Postgres.  date − date is an integer number of
   // days, so this is exact and needs no timezone reasoning.
   const days = await c.query(
@@ -168,9 +186,13 @@ export async function applyProration(
   // until the next period.  The event is still recorded — the ledger is the
   // history of what happened, not only of what was charged.
   const prorates = s.proration_enabled && np.rows[0].proration_enabled
-  const delta = prorates
-    ? round2((newRate - oldRate) * (daysRemaining / daysInPeriod))
-    : 0
+  const delta = !prorates
+    ? 0
+    : cycleChanged
+      // Credit the unused remainder of the OLD plan only.  The new plan's
+      // first period starts clean below.
+      ? round2((0 - oldRate) * (daysRemaining / daysInPeriod))
+      : round2((newRate - oldRate) * (daysRemaining / daysInPeriod))
 
   // A negative delta is money owed BACK to the customer, which is a credit
   // note, not a negative invoice.
@@ -201,11 +223,26 @@ export async function applyProration(
     ],
   )
 
-  await c.query(`UPDATE subscription SET qty = $2, plan_id = $3 WHERE id = $1`,
-    [subscriptionId, newQty, newPlanId])
+  if (cycleChanged) {
+    // New cycle, new period, anchored on the effective date.
+    const iv = intervalFor(String(np.rows[0].cycle))
+    await c.query(
+      `UPDATE subscription
+          SET qty = $2, plan_id = $3,
+              current_period_start = $4::date,
+              current_period_end   = ($4::date + $5::interval)::date,
+              next_bill_date       = ($4::date + $5::interval)::date
+        WHERE id = $1`,
+      [subscriptionId, newQty, newPlanId, effectiveDate, iv],
+    )
+  } else {
+    await c.query(`UPDATE subscription SET qty = $2, plan_id = $3 WHERE id = $1`,
+      [subscriptionId, newQty, newPlanId])
+  }
 
   return {
     eventId: ev.rows[0].id,
+    cycleChanged,
     deltaAmount: delta,
     daysRemaining,
     daysInPeriod,
@@ -243,11 +280,24 @@ export async function cancelSubscription(
   const s = cur.rows[0]
   if (s.status === 'cancelled') throw new Error('That subscription is already cancelled.')
 
+  // ── NOTICE PERIODS ARE NOT DECORATION ────────────────────────────
+  // subscription_plan.cancellation_notice_days was being read, returned to the
+  // caller, and then ignored — so a plan requiring 30 days' notice refunded as
+  // though it had ended today.  That over-refunds the customer, every time.
+  //
+  // Cancellation now takes effect no earlier than today plus the notice period.
+  // If the notice runs past the end of the current period, days_remaining is
+  // zero and no refund is due — which is the correct answer, not an edge case:
+  // the customer has been served for everything they paid for.
   const days = await c.query(
-    `SELECT (($2::date) - ($1::date))                              AS days_in_period,
-            GREATEST(0, ($2::date) - GREATEST($1::date, LEAST($2::date, COALESCE($3::date, CURRENT_DATE)))) AS days_remaining,
-            GREATEST($1::date, LEAST($2::date, COALESCE($3::date, CURRENT_DATE)))                            AS effective_date`,
-    [s.current_period_start, s.current_period_end, effectiveDate ?? null],
+    `WITH eff AS (
+       SELECT GREATEST(COALESCE($3::date, CURRENT_DATE), CURRENT_DATE + ($4 || ' days')::interval)::date AS d
+     )
+     SELECT (($2::date) - ($1::date))                                                AS days_in_period,
+            GREATEST(0, ($2::date) - GREATEST($1::date, LEAST($2::date, (SELECT d FROM eff)))) AS days_remaining,
+            GREATEST($1::date, LEAST($2::date, (SELECT d FROM eff)))                 AS effective_date,
+            (SELECT d FROM eff)                                                      AS requested_effective_date`,
+    [s.current_period_start, s.current_period_end, effectiveDate ?? null, s.cancellation_notice_days],
   )
   const daysInPeriod: number = days.rows[0].days_in_period
   const daysRemaining: number = days.rows[0].days_remaining
@@ -305,6 +355,102 @@ export async function cancelSubscription(
   }
 }
 
+/**
+ * Pause a subscription.
+ *
+ * NO PRORATION ROW IS WRITTEN, and the schema says why: proration_event's
+ * event_type CHECK has no 'pause' member.  Pausing moves no money — the
+ * current period is already billed and is not refunded — so there is nothing
+ * for a money ledger to record.  The audit_log entry in the route is the
+ * record that it happened.
+ *
+ * next_bill_date must be nulled in the same statement as the status, or the
+ * next_bill_only_when_active CHECK refuses the row.
+ */
+export async function pauseSubscription(
+  c: PoolClient,
+  subscriptionId: number,
+): Promise<{ pausedAt: string; periodEnd: string }> {
+  const cur = await c.query(
+    `SELECT status, current_period_end FROM subscription WHERE id = $1 FOR UPDATE`,
+    [subscriptionId],
+  )
+  if (cur.rowCount === 0) throw new Error(`No subscription with id ${subscriptionId}`)
+  if (cur.rows[0].status === 'cancelled') throw new Error('That subscription is cancelled.')
+  if (cur.rows[0].status === 'paused') throw new Error('That subscription is already paused.')
+
+  await c.query(
+    `UPDATE subscription SET status = 'paused', next_bill_date = NULL WHERE id = $1`,
+    [subscriptionId],
+  )
+  return { pausedAt: today(), periodEnd: String(cur.rows[0].current_period_end).slice(0, 10) }
+}
+
+/**
+ * Resume a paused subscription.
+ *
+ * The period is RE-ANCHORED to the resume date rather than resumed where it
+ * left off. Carrying the old period forward would bill the customer for the
+ * weeks the service was switched off, which is the whole thing a pause is
+ * supposed to prevent.
+ *
+ * This is the one place event_type 'reactivate' is written. delta_amount is
+ * zero — no money moves on resume; the new period is billed normally when it
+ * ends — but the row is still recorded, because the ledger is the history of
+ * what happened to the subscription, not only of what was charged.
+ */
+export async function resumeSubscription(
+  c: PoolClient,
+  subscriptionId: number,
+): Promise<{ periodStart: string; periodEnd: string; eventId: number }> {
+  const cur = await c.query(
+    `SELECT s.id, s.qty, s.plan_id, s.status, p.cycle
+       FROM subscription s JOIN subscription_plan p ON p.id = s.plan_id
+      WHERE s.id = $1 FOR UPDATE OF s`,
+    [subscriptionId],
+  )
+  if (cur.rowCount === 0) throw new Error(`No subscription with id ${subscriptionId}`)
+  const s = cur.rows[0]
+  if (s.status === 'cancelled') throw new Error('A cancelled subscription cannot be resumed.')
+  if (s.status === 'active') throw new Error('That subscription is already active.')
+
+  const iv = intervalFor(String(s.cycle))
+  const upd = await c.query(
+    `UPDATE subscription
+        SET status = 'active',
+            current_period_start = CURRENT_DATE,
+            current_period_end   = (CURRENT_DATE + $2::interval)::date,
+            next_bill_date       = (CURRENT_DATE + $2::interval)::date
+      WHERE id = $1
+      RETURNING current_period_start, current_period_end`,
+    [subscriptionId, iv],
+  )
+  const period = upd.rows[0]
+
+  const ev = await c.query(
+    `INSERT INTO proration_event
+       (subscription_id, event_type, effective_date, old_qty, new_qty,
+        old_plan_id, new_plan_id, days_remaining, days_in_period,
+        delta_amount, credit_note_id)
+     VALUES ($1, 'reactivate', CURRENT_DATE, $2, $2, $3, $3, $4, $4, 0, NULL)
+     RETURNING id`,
+    [
+      subscriptionId, s.qty, s.plan_id,
+      // A freshly anchored period: every day of it is still to come.
+      Number(
+        (await c.query(`SELECT ($2::date - $1::date) AS d`,
+          [period.current_period_start, period.current_period_end])).rows[0].d,
+      ),
+    ],
+  )
+
+  return {
+    periodStart: String(period.current_period_start).slice(0, 10),
+    periodEnd: String(period.current_period_end).slice(0, 10),
+    eventId: ev.rows[0].id,
+  }
+}
+
 export async function issueCreditNote(
   c: PoolClient,
   opts: { customerId: number; amount: number; reason: string; invoiceId?: number | null },
@@ -322,4 +468,12 @@ export async function issueCreditNote(
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
+}
+
+/** Today as YYYY-MM-DD in LOCAL time.  Never toISOString() — that converts to
+ *  UTC and, east of Greenwich, reports yesterday. */
+function today(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }

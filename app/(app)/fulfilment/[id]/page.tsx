@@ -21,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SplitPlan, type Plan } from '@/components/fulfilment/split-plan'
+import { SHIPMENT_BASE_COST } from '@/lib/allocate'
 import { Money, money, qty as fq, date as fd } from '@/components/billing/format'
 
 type StockRow = {
@@ -205,7 +206,7 @@ export default function OrderFulfilmentPage() {
                             <TableCell className="text-right tabular-nums">{fq(s.onShelf)}</TableCell>
                             <TableCell className="text-right tabular-nums">{fq(s.planned)}</TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{fq(s.available)}</TableCell>
-                            <TableCell className="text-right"><Money value={250 * s.shippingCostWeight} currency={cur} /></TableCell>
+                            <TableCell className="text-right"><Money value={SHIPMENT_BASE_COST * s.shippingCostWeight} currency={cur} /></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

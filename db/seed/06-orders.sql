@@ -96,11 +96,40 @@ BEGIN
               (CURRENT_DATE - interval '10 days')::date,
               (CURRENT_DATE - interval '10 days' + v_iv)::date,
               (CURRENT_DATE - interval '10 days' + v_iv)::date,
-              now() - interval '10 days')
+              -- Started a FULL CYCLE before the current period, so the
+              -- subscription has history rather than springing into existence
+              -- mid-month with no explanation.
+              now() - interval '10 days' - v_iv)
       RETURNING id INTO v_sub_id;
 
       v_amount := round(v_plan.price * v_line.qty, 2);
 
+      -- The PREVIOUS period: billed and settled.  Screen 12 needs a 'paid'
+      -- invoice and this is the honest place for one — a subscription running
+      -- since last cycle has been paid at least once.
+      INSERT INTO invoice (number, customer_id, subscription_id, kind, currency_code,
+                           amount_total, status, issue_date, due_date)
+      VALUES ('INV-' || to_char(now(), 'YYYY') || '-' ||
+              lpad(((SELECT count(*) FROM invoice) + 1)::text, 4, '0'),
+              v_q.customer_id, v_sub_id, 'recurring', v_plan.currency_code,
+              v_amount, 'unpaid',
+              (CURRENT_DATE - interval '10 days' - v_iv)::date,
+              (CURRENT_DATE - interval '10 days')::date)
+      RETURNING id INTO v_inv_id;
+
+      INSERT INTO invoice_line (invoice_id, description, qty, unit_price, amount)
+      VALUES (v_inv_id,
+              v_plan.name || ' · ' ||
+              to_char(CURRENT_DATE - interval '10 days' - v_iv, 'YYYY-MM-DD') || ' → ' ||
+              to_char(CURRENT_DATE - interval '10 days', 'YYYY-MM-DD'),
+              v_line.qty, v_plan.price, v_amount);
+
+      -- Settled in full, on time.
+      INSERT INTO payment (invoice_id, amount, method, reference, paid_at)
+      VALUES (v_inv_id, v_amount, 'bank', 'NEFT-SEED-SUB',
+              now() - interval '10 days' - interval '1 day');
+
+      -- The CURRENT period: billed, not yet due.  Left unpaid.
       INSERT INTO invoice (number, customer_id, subscription_id, kind, currency_code,
                            amount_total, status, issue_date, due_date)
       VALUES ('INV-' || to_char(now(), 'YYYY') || '-' ||
@@ -152,16 +181,18 @@ BEGIN
 END $$;
 
 -- ── Payments, so screen 12 has all three states on it ────────────────
--- Enough to settle the oldest invoice, and a part-payment against the next.
+-- Every one-time invoice is PART paid.  Do not make this depend on how many
+-- orders exist: an earlier version settled the first one-time invoice and
+-- part-paid the second, which quietly produced no 'partial' invoice at all
+-- when D1's seed contained a single confirmed quotation.  The three states now
+-- come from three different sources and none of them can go missing:
+--   paid     ← the subscription's completed previous period, above
+--   partial  ← here
+--   unpaid   ← the subscription's current period, above
 INSERT INTO payment (invoice_id, amount, method, reference, paid_at)
-SELECT i.id, i.amount_total, 'bank', 'NEFT-SEED-1', now() - interval '2 days'
-  FROM invoice i WHERE i.kind = 'one_time'
- ORDER BY i.id LIMIT 1;
-
-INSERT INTO payment (invoice_id, amount, method, reference, paid_at)
-SELECT i.id, round(i.amount_total * 0.40, 2), 'card', 'CARD-SEED-2', now() - interval '1 day'
-  FROM invoice i WHERE i.kind = 'one_time'
- ORDER BY i.id OFFSET 1 LIMIT 1;
+SELECT i.id, round(i.amount_total * 0.40, 2), 'card', 'CARD-SEED-' || i.id,
+       now() - interval '1 day'
+  FROM invoice i WHERE i.kind = 'one_time';
 
 -- ── Status is DERIVED, never typed ──────────────────────────────────
 -- Exactly the rule applyPayment() applies in lib/invoice.ts.  The seed does

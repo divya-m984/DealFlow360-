@@ -31,3 +31,10 @@ export function date(v: string | null | undefined): string {
   if (!v) return '—'
   return String(v).slice(0, 10)
 }
+
+/** A JS Date as YYYY-MM-DD in LOCAL time.  toISOString() converts to UTC and,
+ *  east of Greenwich, returns the previous day — see the note in lib/db.ts. */
+export function localDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
