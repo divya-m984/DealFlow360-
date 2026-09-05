@@ -1,9 +1,161 @@
-// OWNER: D2.  Confirmed quotation to sales_order.
-// Phase 0 stub — created so this file is never created twice. See OWNERSHIP.md.
-import { fail } from '@/lib/api'
+// OWNER: D2.  Confirmed quotation → sales_order.  The handover point where
+// D1's lane ends and mine begins.
+import { z } from 'zod'
+import { q, tx } from '@/lib/db'
+import { ok, fail, parseBody, withAuth } from '@/lib/api'
+import { startSubscription } from '@/lib/billing'
+import { createOrderInvoice, createSubscriptionInvoice } from '@/lib/invoice'
+import { isStockManaged, suggestPlan, persistPlan, recomputeOrderState } from '../fulfilment/_stock'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
-  return fail('Not implemented yet — owner: D2', 501)
-}
+export const GET = withAuth(null, async (req) => {
+  const url = new URL(req.url)
+  const state = url.searchParams.get('state')
+
+  const rows = await q(
+    `SELECT o.id, o.number, o.quotation_id, qt.number AS quotation_number,
+            o.customer_id, cu.name AS customer_name, o.currency_code, o.state,
+            o.promised_delivery_date, o.grand_total, o.created_at,
+            (o.promised_delivery_date IS NOT NULL
+             AND o.promised_delivery_date < CURRENT_DATE
+             AND o.state <> 'fulfilled')                       AS is_late,
+            (SELECT count(*)::int FROM backorder b
+               JOIN sales_order_line sl ON sl.id = b.order_line_id
+              WHERE sl.order_id = o.id AND b.resolved_at IS NULL) AS open_backorders
+       FROM sales_order o
+       JOIN customer cu ON cu.id = o.customer_id
+       JOIN quotation qt ON qt.id = o.quotation_id
+      WHERE ($1::text IS NULL OR o.state::text = $1)
+      ORDER BY o.created_at DESC, o.id DESC`,
+    [state],
+  )
+  return ok(rows)
+})
+
+const Body = z.strictObject({
+  quotationId: z.number().int().positive(),
+  /** Days from today.  The mockup's progress rail needs a promise to slip against. */
+  promisedInDays: z.number().int().min(0).max(365).default(7),
+})
+
+export const POST = withAuth(null, async (req, session) => {
+  const { quotationId, promisedInDays } = await parseBody(req, Body)
+
+  const result = await tx(async (c) => {
+    // Lock the quotation.  Confirming the same quotation twice from two tabs
+    // is exactly the kind of thing that happens during a demo.
+    const qt = await c.query(
+      `SELECT id, number, customer_id, currency_code, state, grand_total, version
+         FROM quotation WHERE id = $1 FOR UPDATE`,
+      [quotationId],
+    )
+    if (qt.rowCount === 0) throw new Error(`No quotation with id ${quotationId}`)
+    const quo = qt.rows[0]
+    if (quo.state !== 'confirmed') {
+      throw new Error(
+        `Quotation ${quo.number} is ${quo.state}. Only a confirmed quotation becomes an order.`,
+      )
+    }
+
+    const dup = await c.query(`SELECT number FROM sales_order WHERE quotation_id = $1`, [quotationId])
+    if (dup.rowCount && dup.rowCount > 0) {
+      throw new Error(`Quotation ${quo.number} is already order ${dup.rows[0].number}.`)
+    }
+
+    // SO-1042 from Q-1042.  Derived rather than sequenced, so the order number
+    // is readable next to the quotation it came from — and unique for free,
+    // because sales_order.quotation_id is UNIQUE.
+    const number = 'SO-' + String(quo.number).replace(/^Q[-_]?/i, '')
+
+    const ord = await c.query(
+      `INSERT INTO sales_order
+         (number, quotation_id, customer_id, currency_code, state,
+          promised_delivery_date, grand_total)
+       VALUES ($1, $2, $3, $4, 'confirmed',
+               (CURRENT_DATE + ($5 || ' days')::interval)::date, $6)
+       RETURNING id, number`,
+      [number, quotationId, quo.customer_id, quo.currency_code, promisedInDays, quo.grand_total],
+    )
+    const orderId = Number(ord.rows[0].id)
+
+    // EVERY line becomes an order line, recurring ones included — a
+    // subscription links back through sales_order_line.source_order_line_id,
+    // so the order stays the single record of what was bought.
+    const lines = await c.query(
+      `SELECT id, product_id, variant_id, line_type, subscription_plan_id,
+              qty, unit_price, net_amount
+         FROM quotation_line WHERE quotation_id = $1 ORDER BY line_no`,
+      [quotationId],
+    )
+    if (lines.rowCount === 0) throw new Error(`Quotation ${quo.number} has no lines.`)
+
+    const created = { orderLines: 0, allocated: 0, backordered: 0, subscriptions: [] as number[] }
+
+    for (const l of lines.rows) {
+      const sol = await c.query(
+        `INSERT INTO sales_order_line
+           (order_id, quotation_line_id, product_id, variant_id, qty, unit_price, net_amount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [orderId, l.id, l.product_id, l.variant_id, l.qty, l.unit_price, l.net_amount],
+      )
+      const orderLineId = Number(sol.rows[0].id)
+      created.orderLines++
+
+      if (l.line_type === 'recurring') {
+        const sub = await startSubscription(c, {
+          customerId: Number(quo.customer_id),
+          planId: Number(l.subscription_plan_id),
+          sourceOrderLineId: orderLineId,
+          qty: Number(l.qty),
+        })
+        created.subscriptions.push(sub.id)
+        continue
+      }
+
+      // A product held in no warehouse is a service — nothing to split.
+      if (!(await isStockManaged(c, Number(l.product_id)))) continue
+
+      const plan = await suggestPlan(c, {
+        orderLineId,
+        productId: Number(l.product_id),
+        variantId: l.variant_id === null ? null : Number(l.variant_id),
+        qty: Number(l.qty),
+      })
+      await persistPlan(c, orderLineId, plan)
+      created.allocated += plan.allocations.length
+      if (plan.backorderQty > 0) created.backordered++
+    }
+
+    // Billing, per PS §B7: the two kinds of line are billed by different
+    // mechanisms, from the same order.
+    const oneTimeInvoice = await createOrderInvoice(c, orderId)
+    const recurringInvoices: { id: number; number: string; amount: number }[] = []
+    for (const subId of created.subscriptions) {
+      recurringInvoices.push(await createSubscriptionInvoice(c, subId))
+    }
+
+    const state = await recomputeOrderState(c, orderId)
+
+    await c.query(
+      `INSERT INTO audit_log (entity_type, entity_id, action, actor_user_id, note, payload)
+       VALUES ('sales_order', $1, 'create_from_quotation', $2, $3, $4)`,
+      [
+        orderId, session.userId,
+        `Order ${number} created from quotation ${quo.number} (v${quo.version})`,
+        JSON.stringify({ quotationId, ...created, state }),
+      ],
+    )
+
+    return {
+      id: orderId,
+      number,
+      state,
+      ...created,
+      oneTimeInvoice,
+      recurringInvoices,
+    }
+  })
+
+  return ok(result, 201)
+})
