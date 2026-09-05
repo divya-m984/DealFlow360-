@@ -15,6 +15,9 @@ import {
   TableRow,
   TableCell,
 } from '@/components/ui/table'
+import { Money, formatMoney } from '@/components/shared/money'
+import { ErrorState } from '@/components/shared/error-state'
+import { EmptyState } from '@/components/shared/empty-state'
 import {
   Download,
   FileSpreadsheet,
@@ -190,7 +193,11 @@ export default function ReportsPage() {
           headStyles: { fillColor: [79, 70, 229] },
         })
 
-        doc.save(`dealflow-report-${new Date().toISOString().slice(0, 10)}.pdf`)
+        const p = (n: number) => String(n).padStart(2, '0')
+        const d = new Date()
+        const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+
+        doc.save(`dealflow-report-${stamp}.pdf`)
       } catch (e) {
         console.error('PDF export failed', e)
       }
@@ -233,7 +240,10 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `dealflow-report-${new Date().toISOString().slice(0, 10)}.csv`
+    const p = (n: number) => String(n).padStart(2, '0')
+    const d = new Date()
+    const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+    link.download = `dealflow-report-${stamp}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -371,13 +381,8 @@ export default function ReportsPage() {
 
       {/* Error state with retry */}
       {error && (
-        <Card className="border-destructive/30 bg-destructive/10 text-destructive p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Failed to load reports: {error}</p>
-            <Button variant="outline" size="sm" onClick={() => fetchReports()}>
-              Retry
-            </Button>
-          </div>
+        <Card>
+          <ErrorState error={error} title="Could not load reports" onRetry={fetchReports} />
         </Card>
       )}
 
@@ -394,7 +399,7 @@ export default function ReportsPage() {
               <Skeleton className="h-8 w-28" />
             ) : (
               <div className="text-2xl font-bold">
-                ₹{Number(data?.kpis?.pipeline_value || 0).toLocaleString('en-IN')}
+                <Money value={data?.kpis?.pipeline_value} currency="INR" />
               </div>
             )}
             <p className="text-xs text-muted-foreground mt-1">
@@ -414,7 +419,7 @@ export default function ReportsPage() {
               <Skeleton className="h-8 w-28" />
             ) : (
               <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                ₹{Number(data?.kpis?.won_revenue || 0).toLocaleString('en-IN')}
+                <Money value={data?.kpis?.won_revenue} currency="INR" />
               </div>
             )}
             <p className="text-xs text-muted-foreground mt-1">
@@ -481,8 +486,8 @@ export default function ReportsPage() {
                   />
                   <YAxis fontSize={11} tickLine={false} />
                   <RechartsTooltip
-                    formatter={(val: any) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Volume']}
-                    labelFormatter={(lbl: any) => `Stage: ${lbl.replace('_', ' ')}`}
+                    formatter={(val: any) => [formatMoney(val, 'INR') ?? '₹0.00', 'Volume']}
+                    labelFormatter={(lbl: any) => `Stage: ${lbl ? String(lbl).replace('_', ' ') : ''}`}
                   />
                   <Bar dataKey="total_amount" fill="#4f46e5" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -523,7 +528,7 @@ export default function ReportsPage() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <RechartsTooltip formatter={(val: any) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Revenue']} />
+                  <RechartsTooltip formatter={(val: any) => [formatMoney(val, 'INR') ?? '₹0.00', 'Revenue']} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -551,9 +556,10 @@ export default function ReportsPage() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : !data?.quotations?.length ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              No quotations found matching the selected filter criteria.
-            </div>
+            <EmptyState
+              title="No quotations found"
+              description="No quotations match the selected filter criteria."
+            />
           ) : (
             <div className="rounded-md border overflow-x-auto">
               <Table>
@@ -591,11 +597,11 @@ export default function ReportsPage() {
                           {q.state.replace('_', ' ')}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums font-medium">
-                        ₹{Number(q.grand_total).toLocaleString('en-IN')}
+                      <TableCell className="text-right">
+                        <Money value={q.grand_total} currency={q.currency_code || 'INR'} className="font-medium" />
                       </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
-                        ₹{Number(q.margin_total).toLocaleString('en-IN')}
+                      <TableCell className="text-right">
+                        <Money value={q.margin_total} currency={q.currency_code || 'INR'} className="text-muted-foreground" />
                       </TableCell>
                       <TableCell className="text-center">
                         <span
