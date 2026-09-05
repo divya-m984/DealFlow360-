@@ -1,0 +1,92 @@
+# ─── SECRETS — never commit ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+credentials.json
+
+# ─── Dependencies & build output ────────────────────────────────
+node_modules/
+.pnpm-store/
+dist/
+build/
+out/
+.next/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# ─── Python ─────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# ─── Databases & runtime data ───────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+pgdata/
+postgres-data/
+/uploads/
+
+# ─── Logs, coverage, OS, editors ────────────────────────────────
+*.log
+logs/
+coverage/
+test-results/
+playwright-report/
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ─── Local agent / tooling state ────────────────────────────────
+.serena/
+.claude/
+.codegraph/
+graphify-out/
+
+# ─── Saved web pages (SPA shells, no useful content) ────────────
+*_files/
+*Excalidraw*.html
+
+# ─── Source material — heavy, and nobody needs the binaries ─────
+# The problem-statement PDFs and the Excalidraw mockup stay LOCAL.
+# Everything in them worth knowing is decoded as text in
+# prep/09-DEALFLOW-ANALYSIS.md §8 and prep/10-SCHEMA-AND-STACK.md —
+# which is also the only form a teammate's agent can actually read.
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.svg
+prep/mockup/
+
+# ────────────────────────────────────────────────────────────────
+# NOTE: prep/, team/, prompts/, RULES.md, the PS PDFs and the mockup
+# PNG are TRACKED on purpose — this is the private prep repo.
+# When you spin up the PRODUCT repo, uncomment the block below so the
+# strategy material never reaches the repo the judges read.
+#
+# prep/
+# team/
+# prompts/
+# RULES.md
+# *.pdf
+# DealFlow360*.png
+# ────────────────────────────────────────────────────────────────
+
+# product repo: strategy material must never land here
+prep/
+team/
+prompts/
+RULES.md
