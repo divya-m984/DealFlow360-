@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SplitPlan, type Plan } from '@/components/fulfilment/split-plan'
 import { SHIPMENT_BASE_COST } from '@/lib/allocate'
 import { Money } from '@/components/shared/money'
+import { InvoicePanel } from '@/components/billing/invoice-panel'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { ErrorState } from '@/components/shared/error-state'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -334,6 +335,11 @@ export default function OrderFulfilmentPage() {
 
         {/* ───────────────────────── SCREEN 10 ──────────────────────── */}
         <TabsContent value="billing" className="space-y-4 pt-4">
+          {/* Jury review 2, ask 6.  Bill what has actually shipped, then bill
+              the rest when the backorder is consolidated.  canFulfil already
+              means finance/admin, which is the same allow-list POST
+              /api/orders/[id]/invoice enforces. */}
+          <InvoicePanel orderId={Number(id)} canWrite={canFulfil} />
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>

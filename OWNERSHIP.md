@@ -119,6 +119,12 @@ them a second time** — which is the whole point of this document.
 | `app/api/negotiation/**` | **D2** | CLAIMED. Seller side of the buyer↔seller chat thread (ask 1). |
 | `app/api/orders/[id]/invoice/**` | **D2** | Partial invoicing on delivered quantities (ask 6). |
 | `app/api/portal/negotiation/[publicId]/messages/route.ts` | **D1 by the map — WRITTEN BY D2** | ⚠ Cross-lane, flagged. The buyer half of the chat. `middleware.ts` only lets a portal session reach `/api/portal`, so it was unreachable from D2's lane. New file, so it cannot conflict — move or rewrite it freely. |
+| `components/admin/**` | **D2** | CLAIMED. User administration and the danger zone, rendered on the settings screen (asks 3, 4, 7). |
+| `components/negotiation/**` | **D2** | CLAIMED. The buyer/seller chat thread (ask 1). Self-contained — it resolves the quotation's live negotiation itself via `GET /api/negotiation?quotationId=`, fetches its own role, and renders nothing when there is no negotiation. Mounting it anywhere is one line. |
+| `components/billing/invoice-panel.tsx` | **D2** | Partial invoicing UI on the fulfilment screen's Billing tab (ask 6). |
+| `components/fulfilment/related-products.tsx` | **D2** | The product-to-product many-to-many, both directions (ask 2). |
+| `app/api/negotiation/route.ts` | **D2** | Resolves a quotation's live thread so the chat component needs no props but the quotation id. |
+| ⚠ `app/(app)/quotations/[id]/page.tsx` | **D1 — 4-line addition by D2** | An import and one `<NegotiationThread quotationId={Number(id)} />`. Deliberately kept to four lines because this file is 550+ lines and actively worked; the component carries all of its own state, so **deleting those four lines removes the feature cleanly.** Move it wherever you prefer. |
 
 ### ⚠ TWO changes to FROZEN files
 

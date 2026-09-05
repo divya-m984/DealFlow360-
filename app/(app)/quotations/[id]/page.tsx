@@ -33,6 +33,9 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { ErrorState } from '@/components/shared/error-state'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Money, Num, formatMoney } from '@/components/shared/money'
+// ⚠ Cross-lane, flagged in OWNERSHIP.md: D2 added the negotiation thread
+// (jury review 2, ask 1). Self-contained — delete these two lines to remove it.
+import { NegotiationThread } from '@/components/negotiation/thread'
 
 type Line = {
   id: number; line_no: number; product_name: string; sku: string
@@ -483,6 +486,11 @@ export default function QuotationDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Jury review 2, ask 1 — the buyer/seller thread. Self-contained: it
+          resolves this quotation's live negotiation itself and renders nothing
+          when there isn't one. */}
+      <NegotiationThread quotationId={Number(id)} />
     </div>
   )
 }
