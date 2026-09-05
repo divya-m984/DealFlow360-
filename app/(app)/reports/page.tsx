@@ -123,11 +123,18 @@ export default function ReportsPage() {
   const handleExportPDF = () => {
     startExport(async () => {
       if (!data) return
-      try {
         const { jsPDF } = await import('jspdf')
-        const autoTable = (await import('jspdf-autotable')).default
+        const autoTableMod = await import('jspdf-autotable')
+        const autoTable = (autoTableMod as any).default || autoTableMod
 
         const doc = new jsPDF()
+        const renderTable = (opts: any) => {
+          if (typeof autoTable === 'function') {
+            autoTable(doc, opts)
+          } else if (typeof (doc as any).autoTable === 'function') {
+            (doc as any).autoTable(opts)
+          }
+        }
 
         doc.setFontSize(16)
         doc.text('DealFlow360 — Sales Operations & Performance Report', 14, 18)
@@ -144,7 +151,7 @@ export default function ReportsPage() {
         doc.setTextColor(30)
         doc.text('Key Performance Indicators', 14, 32)
 
-        autoTable(doc, {
+        renderTable({
           startY: 36,
           head: [['Total Pipeline', 'Won Revenue', 'Avg Discount', 'Avg Margin', 'Win Rate', 'Total Quotes']],
           body: [
@@ -167,7 +174,7 @@ export default function ReportsPage() {
         doc.setTextColor(30)
         doc.text('Quotation Summary (Filtered)', 14, lastY + 10)
 
-        autoTable(doc, {
+        renderTable({
           startY: lastY + 14,
           head: [['Quote #', 'Customer', 'Rep', 'Team', 'Status', 'Total (INR)', 'Risk Band']],
           body: data.quotations.map((q) => [
