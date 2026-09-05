@@ -126,6 +126,7 @@ export default function ReportsPage() {
   const handleExportPDF = () => {
     startExport(async () => {
       if (!data) return
+      try {
         const { jsPDF } = await import('jspdf')
         const autoTableMod = await import('jspdf-autotable')
         const autoTable = (autoTableMod as any).default || autoTableMod
