@@ -36,7 +36,7 @@ const NAV_BLOCK =
 function navBlockTone(active: boolean) {
   return active
     ? 'border-nav-foreground bg-nav-active text-nav-foreground'
-    : 'border-transparent text-nav-foreground/75 hover:bg-white/10 hover:text-nav-foreground'
+    : 'border-transparent text-nav-foreground/85 hover:bg-white/10 hover:text-nav-foreground'
 }
 
 /** A group's flyout: solid panel, one row per screen with its description. */
@@ -151,7 +151,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <button
               onClick={logout}
               title="Log out"
-              className="inline-flex size-7 items-center justify-center rounded-md text-nav-foreground/75 transition-colors hover:bg-white/10 hover:text-nav-foreground focus-visible:ring-2 focus-visible:ring-nav-foreground/60 outline-none cursor-pointer"
+              className="inline-flex size-7 items-center justify-center rounded-md text-nav-foreground/85 transition-colors hover:bg-white/10 hover:text-nav-foreground focus-visible:ring-2 focus-visible:ring-nav-foreground/60 outline-none cursor-pointer"
             >
               <LogOut className="size-4" />
               <span className="sr-only">Log out</span>

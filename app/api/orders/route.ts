@@ -2,10 +2,11 @@
 // D1's lane ends and mine begins.
 import { z } from 'zod'
 import { q, tx } from '@/lib/db'
-import { ok, fail, parseBody, withAuth } from '@/lib/api'
+import { ok, fail, parseBody, withAuth, BusinessRuleError } from '@/lib/api'
 import { startSubscription } from '@/lib/billing'
 import { createOrderInvoice, createSubscriptionInvoice } from '@/lib/invoice'
 import { isStockManaged, suggestPlan, persistPlan, recomputeOrderState } from '../fulfilment/_stock'
+import { checkCredit } from '@/lib/credit'
 
 export const runtime = 'nodejs'
 
@@ -53,14 +54,33 @@ export const POST = withAuth(null, async (req, session) => {
     if (qt.rowCount === 0) throw new Error(`No quotation with id ${quotationId}`)
     const quo = qt.rows[0]
     if (quo.state !== 'confirmed') {
-      throw new Error(
+      throw new BusinessRuleError(
         `Quotation ${quo.number} is ${quo.state}. Only a confirmed quotation becomes an order.`,
       )
     }
 
     const dup = await c.query(`SELECT number FROM sales_order WHERE quotation_id = $1`, [quotationId])
     if (dup.rowCount && dup.rowCount > 0) {
-      throw new Error(`Quotation ${quo.number} is already order ${dup.rows[0].number}.`)
+      throw new BusinessRuleError(`Quotation ${quo.number} is already order ${dup.rows[0].number}.`)
+    }
+
+    // ── CREDIT CONTROL ──────────────────────────────────────────────
+    // The last point at which refusing is still cheap.  Once this returns,
+    // stock is allocated and reserved and the customer is expecting goods;
+    // discovering a credit breach after that means either eating the risk or
+    // retracting a commitment, and organisations reliably choose the first.
+    //
+    // It runs INSIDE the transaction that locked the quotation, so two reps
+    // confirming two deals for the same near-limit customer at the same
+    // instant cannot both read the pre-breach exposure and both pass.
+    //
+    // Deliberately NOT a warning. §7 wants business rules to be real, and a
+    // rule that can be clicked past is a label. Finance raises the limit or
+    // lifts the hold — both are one edit on the customer, both are recorded.
+    const credit = await checkCredit(c, quo.customer_id, Number(quo.grand_total))
+    if (!credit.allowed) {
+      // 409, not 500 — the request was understood and declined.
+      throw new BusinessRuleError(credit.message)
     }
 
     // SO-1042 from Q-1042.  Derived rather than sequenced, so the order number
@@ -129,6 +149,16 @@ export const POST = withAuth(null, async (req, session) => {
 
     // Billing, per PS §B7: the two kinds of line are billed by different
     // mechanisms, from the same order.
+    //
+    // AT CREATION THIS BILLS SERVICES ONLY.  createOrderInvoice() charges for
+    // stock-managed lines when they SHIP, and nothing has shipped yet — so on
+    // a physical-goods order this returns null and the first invoice appears
+    // at the first shipment instead.  Lines held in no warehouse (Onsite
+    // Setup, Extended Warranty) have no shipment to wait for and are billed
+    // here, in full.  A pure-goods order therefore now leaves this endpoint
+    // with no one-time invoice, which is correct and is the whole point of the
+    // change: the customer is not charged for 100 laptops on the day 70 of
+    // them exist.
     const oneTimeInvoice = await createOrderInvoice(c, orderId)
     const recurringInvoices: { id: number; number: string; amount: number }[] = []
     for (const subId of created.subscriptions) {

@@ -119,6 +119,13 @@ function alignClass(meta: DataTableColumnMeta | undefined) {
   return 'text-left'
 }
 
+/** The vertical rule that turns a list of columns into a grid.  Defined once
+ *  so the header, the body and the loading skeleton cannot drift apart on it.
+ *  `/50` because --border is already a visible line at full strength and a
+ *  full-strength grid reads as graph paper. */
+const CELL_RULE =
+  '[&:not(:first-child)]:border-l [&:not(:first-child)]:border-border/50'
+
 export type DataTableProps<T extends RowData> = {
   columns: DataTableColumns<T>
   /** `undefined` while the first request is in flight. */
@@ -222,7 +229,7 @@ export function DataTable<T extends RowData>({
       )}
     >
       {/* Control band */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3.5 py-2.5">
         <div className="relative w-full max-w-xs">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -252,9 +259,12 @@ export function DataTable<T extends RowData>({
         <Table>
           <TableHeader>
             {headerGroups.map((group) => (
+              // BLOCKIER: a solid band, not a 40% wash, closed with a
+              // double rule.  The header used to be the same weight as a data
+              // row and the eye slid straight past it.
               <TableRow
                 key={group.id}
-                className="border-border bg-muted/40 hover:bg-muted/40"
+                className="border-b-2 border-border bg-muted hover:bg-muted"
               >
                 {group.headers.map((header) => {
                   const meta = header.column.columnDef.meta as
@@ -280,7 +290,14 @@ export function DataTable<T extends RowData>({
                       // job is the thing that makes an app look assembled by
                       // four people.
                       className={cn(
-                        'h-9 px-3 text-xs font-bold tracking-wide text-muted-foreground uppercase',
+                        'h-10 px-3.5 text-xs font-bold tracking-wide text-muted-foreground uppercase',
+                        // The vertical rule that makes the grid.  Every cell
+                        // but the first carries a left border, so columns are
+                        // separated by a line rather than only by whitespace —
+                        // the difference between a list of values and a table
+                        // you can read across.  Kept at /50 so it divides
+                        // without becoming graph paper.
+                        CELL_RULE,
                         alignClass(meta),
                         meta?.headerClassName,
                       )}
@@ -320,7 +337,7 @@ export function DataTable<T extends RowData>({
               Array.from({ length: 8 }).map((_, r) => (
                 <TableRow key={`skeleton-${r}`} className="border-border">
                   {Array.from({ length: Math.max(columnCount, 1) }).map((__, c) => (
-                    <TableCell key={c} className="px-3 py-2.5">
+                    <TableCell key={c} className={cn('px-3.5 py-3.5', CELL_RULE)}>
                       <Skeleton className="h-4 w-full max-w-[8rem]" />
                     </TableCell>
                   ))}
@@ -390,7 +407,14 @@ export function DataTable<T extends RowData>({
                       <TableCell
                         key={cell.id}
                         className={cn(
-                          'px-3 py-2 text-sm',
+                          // py-2 -> py-3: rows were 36px and read as a wall of
+                          // text.  Height is the cheapest legibility there is.
+                          'px-3.5 py-3 text-sm',
+                          CELL_RULE,
+                          // The first column is the row's identifier on every
+                          // screen that uses this table, so it carries the
+                          // weight rather than every column competing.
+                          'first:font-medium first:text-foreground',
                           alignClass(meta),
                           meta?.className,
                         )}
@@ -408,7 +432,7 @@ export function DataTable<T extends RowData>({
 
       {/* Status band.  The record count lives here and ONLY here — it used to
           appear twice, as "8 rows" above the table and "1–8 of 8" below it. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-3.5 py-2.5">
         <p className="text-xs text-muted-foreground">
           {!loading && (
             <span className="font-medium text-foreground tabular-nums">

@@ -25,6 +25,8 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { ErrorState } from '@/components/shared/error-state'
 import { EmptyState } from '@/components/shared/empty-state'
 import {qty as fq } from '@/components/billing/format'
+import { RelatedProducts } from '@/components/fulfilment/related-products'
+import { AuditTimeline } from '@/components/billing/audit-timeline'
 
 const EDIT_ROLES = ['admin', 'sales_manager']
 const CYCLES = ['weekly', 'monthly', 'quarterly', 'yearly'] as const
@@ -322,6 +324,15 @@ export default function ProductDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Jury review 2, ask 2 — the many-to-many, made visible. */}
+      <RelatedProducts
+        accessories={p.accessories ?? []}
+        alternatives={p.alternatives ?? []}
+        accessoryFor={p.accessoryFor ?? []}
+      />
+
+      <AuditTimeline entityType="product" entityId={Number(id)} title="Change history" />
     </div>
   )
 }

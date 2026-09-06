@@ -31,6 +31,56 @@
 -- way, which is what lets four people reset the database all day.
 BEGIN;
 
+-- ── A SECOND CONFIRMED DEAL, SHAPED TO DEFEAT GREEDY ─────────────────
+-- 04-stock.sql deliberately arms a trap: MOUSE sits at MAIN 12, PNQ 25,
+-- EAST 80, HSR 30, GAU 15, and the warehouse weights run MAIN 1.00 <
+-- PNQ 1.30 < EAST 1.55 < HSR 2.45 < GAU 3.60.  Its own invariant asserts
+-- that exactly one warehouse can cover a 40-unit line alone AND that it is
+-- not the cheapest one.  Until now nothing ORDERED 40 mice, so the trap was
+-- armed and never sprung.
+--
+-- Why that matters: a naive greedy allocator fills from the cheapest
+-- warehouse first, so it takes MAIN 12, then PNQ 25, then EAST for the last
+-- 3 — three shipments, ₹962.50.  The exhaustive search notices that EAST
+-- alone covers all 40 in ONE shipment for ₹387.50.  Same stock, same prices,
+-- ₹575 apart, and greedy loses precisely BECAUSE it optimised the first
+-- shipment.
+--
+-- The existing Q-1028 line does not show this: there, greedy and the search
+-- agree (MAIN+PNQ, ₹575 either way), which is honest but demonstrates
+-- nothing.  This quotation exists so the difference is visible on a screen
+-- rather than only in lib/allocate.test.mjs.
+--
+-- Inserted BEFORE the loop below, which creates an order for every confirmed
+-- quotation — so it flows through the ordinary path and is not special-cased.
+INSERT INTO quotation (number, customer_id, owner_user_id, pricelist_id, currency_code,
+                       state, version, submitted_at, approved_at, confirmed_at, last_activity_at)
+SELECT 'Q-1029',
+       c.id,
+       (SELECT id FROM app_user WHERE role = 'sales_rep' ORDER BY id LIMIT 1),
+       (SELECT id FROM pricelist WHERE name = 'Bronze List'),
+       'INR', 'confirmed', 1,
+       now() - interval '6 days', now() - interval '5 days', now() - interval '4 days',
+       now() - interval '4 days'
+  FROM customer c
+ WHERE c.is_active
+   AND NOT EXISTS (SELECT 1 FROM quotation WHERE number = 'Q-1029')
+ ORDER BY c.id OFFSET 1 LIMIT 1;
+
+INSERT INTO quotation_line (quotation_id, line_no, product_id, line_type, qty,
+                            unit_price, unit_cost, discount_pct, ceiling_pct, tax_pct)
+SELECT q.id, 1, p.id, 'one_time', 40, p.base_price, p.cost, 0,
+       effective_ceiling_pct(c.tier_id, p.category_id), p.tax_pct
+  FROM quotation q
+  JOIN customer c ON c.id = q.customer_id
+  CROSS JOIN product p
+ WHERE q.number = 'Q-1029' AND p.sku = 'MOUSE'
+   AND NOT EXISTS (SELECT 1 FROM quotation_line WHERE quotation_id = q.id);
+
+UPDATE quotation q SET subtotal = t.n, grand_total = t.n
+  FROM (SELECT quotation_id, sum(net_amount) AS n FROM quotation_line GROUP BY quotation_id) t
+ WHERE t.quotation_id = q.id AND q.number = 'Q-1029';
+
 DO $$
 DECLARE
   v_q          record;

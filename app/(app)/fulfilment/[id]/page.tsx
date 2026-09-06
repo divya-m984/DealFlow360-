@@ -22,8 +22,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SplitPlan, type Plan } from '@/components/fulfilment/split-plan'
+import { ConcurrencyProbe } from '@/components/fulfilment/concurrency-probe'
+import { EwayPanel } from '@/components/fulfilment/eway-panel'
+import { AuditTimeline } from '@/components/billing/audit-timeline'
 import { SHIPMENT_BASE_COST } from '@/lib/allocate'
 import { Money } from '@/components/shared/money'
+import { InvoicePanel } from '@/components/billing/invoice-panel'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { ErrorState } from '@/components/shared/error-state'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -330,10 +334,27 @@ export default function OrderFulfilmentPage() {
               </Card>
             )
           })}
+
+          {/* Rule 138.  Lives next to the split because the split decides how
+              many statutory documents this order needs and whose threshold
+              applies to each. */}
+          <EwayPanel orderId={Number(id)} canWrite={canFulfil} />
+
+          {/* The reservation race, runnable by whoever is watching.  Gated to
+              the same roles that may reserve, because it really does reserve. */}
+          {canFulfil && <ConcurrencyProbe orderId={Number(id)} onDone={load} />}
+
+          <AuditTimeline entityType="sales_order" entityId={Number(id)} title="Order history" />
         </TabsContent>
 
         {/* ───────────────────────── SCREEN 10 ──────────────────────── */}
+
         <TabsContent value="billing" className="space-y-4 pt-4">
+          {/* Jury review 2, ask 6.  Bill what has actually shipped, then bill
+              the rest when the backorder is consolidated.  canFulfil already
+              means finance/admin, which is the same allow-list POST
+              /api/orders/[id]/invoice enforces. */}
+          <InvoicePanel orderId={Number(id)} canWrite={canFulfil} />
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>

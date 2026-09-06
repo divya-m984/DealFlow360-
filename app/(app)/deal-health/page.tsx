@@ -50,6 +50,11 @@ import { DateValue, Money, Num } from '@/components/shared/money'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { useListData } from '@/components/shared/use-list-data'
+// ⚠ Cross-lane, flagged in OWNERSHIP.md: D2 added live alert detection.
+// Until now every alert on this screen was a seed fixture -- the only
+// INSERTs into deal_alert in the repo were in db/seed/. Self-contained;
+// deleting these two additions removes it cleanly.
+import { AlertScan } from '@/components/admin/alert-scan'
 import { Skeleton } from '@/components/ui/skeleton'
 
 type DealAlertRow = {
@@ -359,6 +364,12 @@ export default function DealHealthPage() {
         title="Deal Health"
         description="Stalled deals, discount anomalies and delivery slippage across the pipeline."
       />
+
+      {/* Alerts are now DERIVED, not seeded. retry() refetches the rows and
+          the tiles above them from the same source. */}
+      <div className="mb-3">
+        <AlertScan onDone={retry} />
+      </div>
 
       {notice && (
         <p className="mb-3 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">

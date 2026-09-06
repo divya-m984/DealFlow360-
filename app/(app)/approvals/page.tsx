@@ -21,7 +21,10 @@
 // you") is the honest answer for a rep with no deals in the chain.
 'use client'
 
+import * as React from 'react'
 import { useRouter } from 'next/navigation'
+import { CheckCircle2, Clock, Landmark, Undo2 } from 'lucide-react'
+import { cn } from 'cn'
 import {
   createDataTableColumns,
   DataTable,
@@ -31,6 +34,7 @@ import { DateValue, Money } from '@/components/shared/money'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { useListData } from '@/components/shared/use-list-data'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type ApprovalRow = {
   id: number
@@ -181,9 +185,276 @@ const columns: DataTableColumns<ApprovalRow> = col.columns([
   }),
 ])
 
+/* ── Queue summary ────────────────────────────────────────────────────────── */
+
+/**
+ * Sum a bucket, or refuse to.  Same rule as the dashboard and the quotations
+ * lanes: `customer.currency_code` is per-customer and the seed handoff gives
+ * Siemens EUR and Cipla USD, so adding `grand_total` across a mixed bucket adds
+ * euros to rupees.  Converting needs `fx_rate` and is server-side business
+ * logic, so a mixed bucket reports its COUNT and declines the total.
+ */
+function totalOf(list: ApprovalRow[], fallbackCurrency: string) {
+  const codes = new Set(list.map((r) => r.currency_code).filter(Boolean))
+  if (codes.size > 1) return { value: null as number | null, currency: '' }
+  const value = list.reduce((sum, r) => {
+    const n = Number(r.grand_total)
+    return Number.isFinite(n) ? sum + n : sum
+  }, 0)
+  return { value, currency: [...codes][0] ?? fallbackCurrency }
+}
+
+/** Whole days a row has been waiting, or null when the date is unusable.
+ *  Rendered only inside a client component after the fetch resolves, so there
+ *  is no server render for `Date.now()` to disagree with. */
+function daysWaiting(iso: string) {
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return null
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000))
+}
+
+function oldestWait(list: ApprovalRow[]) {
+  let worst: number | null = null
+  for (const row of list) {
+    const d = daysWaiting(row.created_at)
+    if (d !== null && (worst === null || d > worst)) worst = d
+  }
+  return worst
+}
+
+const PANEL = 'rounded-xl border border-border bg-card shadow-[var(--shadow-card)]'
+
+function SummaryTile({
+  label,
+  hint,
+  count,
+  footLabel,
+  foot,
+  icon,
+  accent,
+  accentSoft,
+}: {
+  label: string
+  hint: string
+  count: number
+  footLabel: string
+  foot: React.ReactNode
+  icon: React.ReactNode
+  accent: string
+  accentSoft: string
+}) {
+  return (
+    <div className={cn(PANEL, 'p-4')}>
+      <span
+        aria-hidden
+        className="flex size-9 items-center justify-center rounded-lg"
+        style={{ backgroundColor: accentSoft, color: accent }}
+      >
+        {icon}
+      </span>
+      <p className="mt-3 text-xs font-bold tracking-wide text-muted-foreground uppercase">
+        {label}
+      </p>
+      <p
+        className="mt-1 text-2xl leading-none font-semibold tabular-nums"
+        // A zero is not an alarm — it stays neutral rather than taking the
+        // tile's accent colour.
+        style={count === 0 ? undefined : { color: accent }}
+      >
+        {count}
+      </p>
+      <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>
+      <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-border pt-2">
+        <span className="text-xs text-muted-foreground">{footLabel}</span>
+        {foot}
+      </div>
+    </div>
+  )
+}
+
+/** The queue at a glance, above the table.
+ *
+ *  It is four counts over the rows ALREADY fetched — no second request, and
+ *  nothing here that the table below does not also contain.  The reason it
+ *  earns its space is that the table is sorted by urgency but paginated, so
+ *  "how many are still pending, and how long has the oldest been waiting"
+ *  cannot be read off it without scrolling. */
+function QueueSummary({
+  rows,
+  loading,
+}: {
+  rows: ApprovalRow[] | undefined
+  loading: boolean
+}) {
+  const model = React.useMemo(() => {
+    if (!rows) return null
+    const pending = rows.filter((r) => r.status === 'pending')
+    return {
+      pending,
+      manager: pending.filter((r) => r.level === 'sales_manager'),
+      finance: pending.filter((r) => r.level === 'finance'),
+      // `returned` goes back to the rep to fix; `rejected` kills the version.
+      // Both are "the chain said no", which is the thing a queue screen must
+      // not bury underneath the pending rows.
+      refused: rows.filter((r) => r.status === 'returned' || r.status === 'rejected'),
+      fallback: rows[0]?.currency_code ?? 'INR',
+    }
+  }, [rows])
+
+  if (loading) {
+    return (
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-[9.5rem] w-full rounded-xl" />
+        ))}
+      </div>
+    )
+  }
+
+  // No rows means the request did not succeed; the table below reports it.
+  if (!model) return null
+
+  const value = totalOf(model.pending, model.fallback)
+  const managerWait = oldestWait(model.manager)
+  const financeWait = oldestWait(model.finance)
+
+  const waiting = (days: number | null) =>
+    days === null ? (
+      <span className="text-xs text-muted-foreground">—</span>
+    ) : (
+      <span className="text-sm font-medium text-foreground tabular-nums">
+        {days} {days === 1 ? 'day' : 'days'}
+      </span>
+    )
+
+  return (
+    <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryTile
+        label="Pending"
+        hint="Steps still waiting on a decision"
+        count={model.pending.length}
+        footLabel="Deal value"
+        foot={
+          value.value === null ? (
+            <span
+              className="text-xs font-medium text-muted-foreground"
+              title="These approvals span more than one currency, so a single total would be meaningless without applying FX rates."
+            >
+              Mixed currencies
+            </span>
+          ) : (
+            <Money
+              value={value.value}
+              currency={value.currency}
+              className="text-sm font-medium text-foreground"
+            />
+          )
+        }
+        icon={<Clock className="size-4" />}
+        accent="var(--accent-amber)"
+        accentSoft="var(--accent-amber-soft)"
+      />
+      <SummaryTile
+        label="With the manager"
+        hint="Pending at the sales_manager step"
+        count={model.manager.length}
+        footLabel="Longest wait"
+        foot={waiting(managerWait)}
+        icon={<CheckCircle2 className="size-4" />}
+        accent="var(--accent-teal)"
+        accentSoft="var(--accent-teal-soft)"
+      />
+      <SummaryTile
+        label="With finance"
+        hint="Pending at the finance step"
+        count={model.finance.length}
+        footLabel="Longest wait"
+        foot={waiting(financeWait)}
+        icon={<Landmark className="size-4" />}
+        accent="var(--accent-plum)"
+        accentSoft="var(--accent-plum-soft)"
+      />
+      <SummaryTile
+        label="Sent back"
+        hint="Returned to the rep or rejected outright"
+        count={model.refused.length}
+        footLabel="Needs rework"
+        foot={
+          <span className="text-sm font-medium text-foreground tabular-nums">
+            {model.refused.filter((r) => r.status === 'returned').length}
+          </span>
+        }
+        icon={<Undo2 className="size-4" />}
+        accent="var(--accent-red)"
+        accentSoft="var(--accent-red-soft)"
+      />
+    </div>
+  )
+}
+
+/* ── Status filter ────────────────────────────────────────────────────────── */
+
+const STATUS_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'returned', label: 'Returned' },
+  { key: 'rejected', label: 'Rejected' },
+] as const
+
+type StatusFilter = (typeof STATUS_FILTERS)[number]['key']
+
+/* ── Screen ───────────────────────────────────────────────────────────────── */
+
 export default function ApprovalsPage() {
   const router = useRouter()
   const { rows, loading, error, retry } = useListData<ApprovalRow>('/api/approvals')
+  const [status, setStatus] = React.useState<StatusFilter>('all')
+
+  // CLIENT-SIDE, like the quotations rail.  GET /api/approvals accepts
+  // `?status=` and would filter server-side, but every row the session is
+  // entitled to is already here — a request per chip would flash a loading
+  // state and would make the chip COUNTS (which describe the whole queue, not
+  // the filtered slice) impossible to show.
+  const counts = React.useMemo(() => {
+    const map = new Map<string, number>()
+    for (const row of rows ?? []) map.set(row.status, (map.get(row.status) ?? 0) + 1)
+    return map
+  }, [rows])
+
+  const filtered = React.useMemo(
+    () => (status === 'all' ? rows : rows?.filter((r) => r.status === status)),
+    [rows, status],
+  )
+
+  const toolbar =
+    rows && rows.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-1">
+        {STATUS_FILTERS.map((f) => {
+          const count = f.key === 'all' ? rows.length : (counts.get(f.key) ?? 0)
+          const active = status === f.key
+          return (
+            <button
+              key={f.key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setStatus(f.key)}
+              className={cn(
+                'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors',
+                'outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                active
+                  ? 'border-primary/30 bg-primary/10 font-semibold text-primary'
+                  : 'border-border text-foreground/80 hover:bg-[var(--row-hover)]',
+                count === 0 && !active && 'text-muted-foreground/60',
+              )}
+            >
+              {f.label}
+              <span className="tabular-nums">{count}</span>
+            </button>
+          )
+        })}
+      </div>
+    ) : null
 
   return (
     <>
@@ -195,17 +466,35 @@ export default function ApprovalsPage() {
         description="Every quotation in the approval chain you can see, with the level it is waiting on."
       />
 
+      <QueueSummary rows={rows} loading={loading} />
+
       <DataTable
         columns={columns}
-        data={rows}
+        data={filtered}
         loading={loading}
         error={error}
         onRetry={retry}
         onRowClick={(row) => router.push(`/approvals/${row.id}`)}
         getRowId={(row) => String(row.id)}
         filterPlaceholder="Filter approvals…"
-        emptyTitle="Nothing awaiting approval"
-        emptyDescription="Quotations appear here when a rep submits one that breaches a discount ceiling."
+        toolbar={toolbar}
+        // TWO different empty states, because they mean two different things.
+        emptyTitle={
+          rows && rows.length > 0
+            ? 'No approvals with that status'
+            : 'Nothing awaiting your approval'
+        }
+        // The old copy said approvals appear "when a rep submits one that
+        // breaches a discount ceiling", which reads as "the chain is empty".
+        // It usually is not: GET /api/approvals scopes a sales_rep to
+        // quotations they OWN, so an empty queue most often means the live
+        // approvals belong to someone else — not that none exist.  Saying so is
+        // the difference between a working screen and a broken-looking one.
+        emptyDescription={
+          rows && rows.length > 0
+            ? 'Every approval in your queue has a different status. Clear the filter above to see them all.'
+            : 'This queue is scoped to what your role can act on — a sales rep sees only approvals for quotations they own. Switch identity in the header to see another role’s queue.'
+        }
         footnote="Click a row to open the approval."
       />
     </>

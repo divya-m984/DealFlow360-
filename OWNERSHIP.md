@@ -110,8 +110,57 @@ them a second time** — which is the whole point of this document.
 | `components/billing/format.tsx` | **D2** | `qty()` and the two date helpers only. The money formatter that used to live here is gone — D2's screens now use D3's `components/shared/money.tsx`, along with `StatusBadge`, `ErrorState` and `EmptyState`. |
 | `components/billing/invoice-pdf.ts`, `components/fulfilment/split-plan.tsx` | **D2** | Invoice PDF, and the suggested-split card. |
 | `lib/allocate.test.mjs` | **D2** | 26 hand-run cases for the allocator. `.mjs`, not `.ts`, because Node's ESM loader needs the explicit `./allocate.ts` specifier and tsc rejects that without `allowImportingTsExtensions` — which would mean editing the Integrator's frozen `tsconfig.json`. `.mjs` is outside tsconfig's `include`, so both tools stay happy. Run it with `node --experimental-strip-types lib/allocate.test.mjs`. |
+| `db/seed/07-mobility.sql` | **D2** | CLAIMED at jury review 2. Phones, phone accessories and two more laptops, plus 27 new `upsell_rule` edges — the many-to-many the jury asked for, seeded as their own phone→case→power-bank example. Additive only: it runs after `06` so no invariant in `04`/`06` can see its rows, and it does not edit `02-catalog.sql` (the Integrator's) at all. Seeds LP15HP to exactly 70 units network-wide for the partial-fulfilment demo, and fails the seed if that drifts. |
+| `db/seed/00-migrations.sql` | **D2** | CLAIMED. Post-freeze DDL, additive and idempotent. It lives in `db/seed/` and not `db/migrations/` because `db/reset.sh` runs `schema.sql` + `db/seed/*.sql` but **not** `db/migrations/` — so migration-only DDL vanishes on the next reset and the person who reset finds out when a route 500s. `00-` sorts first, every statement is `IF NOT EXISTS`, and it edits no frozen file. |
+| `db/seed/08-users.sql` | **D2** | CLAIMED. The `viewer` and `super_admin` demo accounts, plus a junior rep that exists only to be promoted on stage. Fails the seed if no active `super_admin` exists. |
+| `db/seed/09-backfill.sql` | **D2** | CLAIMED. Backfills columns `00-` adds to tables **other lanes seed** — it cannot run in `00-` (rows don't exist yet) and cannot live in D1's or the Integrator's seed files. Runs last, every statement guarded by `IS NULL`. |
+| `app/api/users/**` | **D2** | CLAIMED. Create a user, promote/demote, deactivate (asks 3 and 7). |
+| `app/api/admin/reset/**` | **D2** | CLAIMED. Bounded destructive reset, `super_admin` + out-of-band token (ask 4). |
+| `app/api/negotiation/**` | **D2** | CLAIMED. Seller side of the buyer↔seller chat thread (ask 1). |
+| `app/api/orders/[id]/invoice/**` | **D2** | Partial invoicing on delivered quantities (ask 6). |
+| `app/api/portal/negotiation/[publicId]/messages/route.ts` | **D1 by the map — WRITTEN BY D2** | ⚠ Cross-lane, flagged. The buyer half of the chat. `middleware.ts` only lets a portal session reach `/api/portal`, so it was unreachable from D2's lane. New file, so it cannot conflict — move or rewrite it freely. |
+| `components/admin/**` | **D2** | CLAIMED. User administration and the danger zone, rendered on the settings screen (asks 3, 4, 7). |
+| `components/negotiation/**` | **D2** | CLAIMED. The buyer/seller chat thread (ask 1). Self-contained — it resolves the quotation's live negotiation itself via `GET /api/negotiation?quotationId=`, fetches its own role, and renders nothing when there is no negotiation. Mounting it anywhere is one line. |
+| `components/billing/invoice-panel.tsx` | **D2** | Partial invoicing UI on the fulfilment screen's Billing tab (ask 6). |
+| `components/fulfilment/related-products.tsx` | **D2** | The product-to-product many-to-many, both directions (ask 2). |
+| `app/api/negotiation/route.ts` | **D2** | Resolves a quotation's live thread so the chat component needs no props but the quotation id. |
+| ⚠ `app/(app)/quotations/[id]/page.tsx` | **D1 — 4-line addition by D2** | An import and one `<NegotiationThread quotationId={Number(id)} />`. Deliberately kept to four lines because this file is 550+ lines and actively worked; the component carries all of its own state, so **deleting those four lines removes the feature cleanly.** Move it wherever you prefer. |
+| `lib/alerts.ts`, `app/api/alerts/scan/**`, `components/admin/alert-scan.tsx` | **D2** | CLAIMED. **Live deal-alert detection.** Before this, the only INSERTs into `deal_alert` anywhere in the repo were in `db/seed/05-quotations.sql` and `06-orders.sql` — every alert a judge ever saw on screen 14 was a fixture. The detector writes into the same table D1's `GET /api/deal-alerts` already reads, so **neither D1's route nor D3's screen changed**. Idempotent: `one_open_alert_per_kind` is a partial unique index, so re-scanning refreshes an alert's detail instead of duplicating it. It also auto-resolves — an alert whose condition stops being true closes itself, which is what stops the screen becoming a list nobody clears. |
+| ⚠ `app/(app)/deal-health/page.tsx` | **D3 — 2 additions by D2** | An import and `<AlertScan onDone={retry} />`. Self-contained; delete both to remove it. |
+| `components/fulfilment/search-trace.tsx`, `components/fulfilment/concurrency-probe.tsx`, `app/api/fulfilment/integrity/**` | **D2** | **The allocator, made attackable.** `lib/allocate.ts` now returns a `SearchTrace` — every warehouse set it examined, what each would have cost, why each lost, and what a naive greedy would have done instead. The probe fires N simultaneous reservations at the real endpoint and asserts on work committed, not HTTP status. `Q-1029` (MOUSE x40) is seeded in `06-orders.sql` specifically to spring the greedy trap `04-stock.sql` has always armed. |
+| `lib/credit.ts`, `app/api/credit/**`, `components/billing/aging-bars.tsx` | **D2** | CLAIMED. **Credit control.** Nothing in the schema knew what a customer OWED us. Exposure = unpaid posted invoices + delivered-but-unbilled + committed orders − credit notes, and `POST /api/orders` now REFUSES a confirmation that would breach the limit or touch a held account. Ageing buckets, DSO and a utilisation gauge on top. |
+| `app/api/invoices/[id]/post/**`, `app/api/invoices/[id]/credit-note/**`, `components/billing/invoice-posting.tsx` | **D2** | CLAIMED. **Document states.** A posted invoice is immutable; corrections are credit notes, not edits. Posting computes the GST IRN with the real IRP algorithm (SHA-256 over supplier GSTIN + doc number + doc type + financial year) and says plainly that it is *not* portal-registered. Draft invoices cannot take payments. |
+| ⚠ `app/(app)/credit/page.tsx` | **D3 by the map — WRITTEN BY D2** | New file, so no conflict. The receivables board. Restyle or absorb it freely. |
+| ⚠ `components/shared/nav-groups.ts` | **D3 — 2-line addition by D2** | A `/credit` entry under Admin, so the new screen is reachable without typing the URL — the exact failure `/settings` already had once. |
+| `lib/eway.ts`, `app/api/eway/**`, `components/fulfilment/eway-panel.tsx` | **D2** | CLAIMED. **E-way bills, Rule 138.** One bill per *despatching warehouse* — a split shipment is two physical movements from two states, so the allocator's split now decides how many statutory documents an order needs. Adds `state_code`/`state_name` to `warehouse` and `customer` (+ `gstin`), which also gives the app place-of-supply for CGST+SGST vs IGST. Distance is an INPUT, never guessed — the pincode dataset tried earlier put Ahmedabad in Uttarakhand. |
+| `app/api/audit/**`, `components/billing/audit-timeline.tsx` | **D2** | CLAIMED. **The audit trail, read back.** `audit_log` had been written by nearly every write since day one and was readable on exactly two screens. One generic endpoint (entity type is a whitelist, not free text), mounted on orders, invoices and products. |
+| `components/filters/**` | **D2** | CLAIMED. The quotation pipeline filter bar. |
+| ⚠ `app/(app)/quotations/page.tsx` | **D3 — 6-line addition by D2** | Filter state, a memoised url, and `<QuotationFilters/>`. `useListData` already refetches when its url changes, so the url IS the filter state and there is no second source of truth. Self-contained; delete the two additions to remove it. |
+| ⚠ `app/api/quotations/route.ts` | **D1 — 2 columns added by D2** | `q.owner_user_id` and `u.team_id`. The route has accepted `ownerId`/`teamId` as filters since it was written, but the rows carried only names — so a filter UI had no id to send back and would have posted a name into `Number()`, matching nothing without erroring. Additive; nothing renamed. |
 
-### ⚠ One change to a FROZEN file — `lib/db.ts`
+### ⚠ TWO changes to FROZEN files
+
+**0. `lib/api.ts` — `BusinessRuleError` → 409.** Handlers signal a refused rule by
+throwing ("that order is cancelled", "this breaches the credit limit"), and the catch
+mapped every unrecognised throw to 500 — so a working business rule looked like a server
+crash. Plain `throw new Error` is still 500 on purpose: converting every bare throw to
+4xx would hide genuine faults. Lanes opt in where the throw really is a rule.
+
+**1. `lib/api.ts` — every validation error in the app returned HTTP 500.**
+`parseBody()` threw a plain `Error`; `withAuth()`'s catch maps an unrecognised throw
+to 500. So a bad request body answered `500 Server error` in **all 42 routes, every
+lane** — `POST /api/quotations {"customerId":"abc"}` returned a 500. 5xx means "the
+server is broken, retry may help"; 4xx means "your request was wrong". Monitoring,
+retry logic and a judge poking the API all read that distinction and all three got
+the wrong answer. Fixed by tagging the throw (`ValidationError`) and mapping it to
+400 — no route changes, no signature changes.
+
+**2. `lib/jwt.ts` — the `Role` union.** Two labels added (`viewer`, `super_admin`)
+plus `ROLE_RANK`. Unavoidable: every `withAuth([...])` allow-list is typed against
+this union. Safe as an add — every route is an allow-list, so a new label starts
+with zero permissions everywhere by construction.
+
+**3. `lib/db.ts`
 
 I added a single line to the Integrator's frozen `lib/db.ts` and it needs your
 sign-off, because it fixes a bug in **every lane at once**:
