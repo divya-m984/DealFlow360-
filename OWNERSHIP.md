@@ -134,6 +134,9 @@ them a second time** — which is the whole point of this document.
 | ⚠ `components/shared/nav-groups.ts` | **D3 — 2-line addition by D2** | A `/credit` entry under Admin, so the new screen is reachable without typing the URL — the exact failure `/settings` already had once. |
 | `lib/eway.ts`, `app/api/eway/**`, `components/fulfilment/eway-panel.tsx` | **D2** | CLAIMED. **E-way bills, Rule 138.** One bill per *despatching warehouse* — a split shipment is two physical movements from two states, so the allocator's split now decides how many statutory documents an order needs. Adds `state_code`/`state_name` to `warehouse` and `customer` (+ `gstin`), which also gives the app place-of-supply for CGST+SGST vs IGST. Distance is an INPUT, never guessed — the pincode dataset tried earlier put Ahmedabad in Uttarakhand. |
 | `app/api/audit/**`, `components/billing/audit-timeline.tsx` | **D2** | CLAIMED. **The audit trail, read back.** `audit_log` had been written by nearly every write since day one and was readable on exactly two screens. One generic endpoint (entity type is a whitelist, not free text), mounted on orders, invoices and products. |
+| `components/filters/**` | **D2** | CLAIMED. The quotation pipeline filter bar. |
+| ⚠ `app/(app)/quotations/page.tsx` | **D3 — 6-line addition by D2** | Filter state, a memoised url, and `<QuotationFilters/>`. `useListData` already refetches when its url changes, so the url IS the filter state and there is no second source of truth. Self-contained; delete the two additions to remove it. |
+| ⚠ `app/api/quotations/route.ts` | **D1 — 2 columns added by D2** | `q.owner_user_id` and `u.team_id`. The route has accepted `ownerId`/`teamId` as filters since it was written, but the rows carried only names — so a filter UI had no id to send back and would have posted a name into `Number()`, matching nothing without erroring. Additive; nothing renamed. |
 
 ### ⚠ TWO changes to FROZEN files
 

@@ -35,7 +35,13 @@ export const GET = withAuth([...INTERNAL], async (req) => {
 
   return ok(
     await q(
+      // ⚠ owner_user_id / team_id added by D2, flagged in OWNERSHIP.md.
+      // The route already accepted ownerId and teamId as FILTERS, but the
+      // rows carried only owner_name and team_name — so a filter UI had no
+      // id to send back and would have posted a name into Number(), matching
+      // nothing silently. Two columns, additive, nothing renamed.
       `SELECT q.id, q.public_id, q.number, q.state, q.version,
+              q.owner_user_id, u.team_id,
               q.risk_score, q.risk_band, q.requires_manager, q.requires_finance,
               q.grand_total, q.margin_total, q.currency_code,
               q.created_at, q.last_activity_at,

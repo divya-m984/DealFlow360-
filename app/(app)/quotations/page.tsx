@@ -27,6 +27,12 @@ import { DateValue, Money } from '@/components/shared/money'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { useListData } from '@/components/shared/use-list-data'
+// ⚠ Cross-lane, flagged in OWNERSHIP.md: D2 added the filter bar. The API has
+// accepted seven filter params since it was written and this screen sent
+// none. Self-contained — delete these two additions to remove it.
+import {
+  QuotationFilters, buildQuotationUrl, type QuotationFilterValue,
+} from '@/components/filters/quotation-filters'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NewQuotationButton } from '@/components/quotation/new-quotation-button'
 
@@ -289,7 +295,11 @@ function PipelineBoard({
 
 export default function QuotationsPage() {
   const router = useRouter()
-  const { rows, loading, error, retry } = useListData<QuotationRow>('/api/quotations')
+  const [filters, setFilters] = React.useState<QuotationFilterValue>({})
+  // useListData refetches when the url changes, and the url IS the filter
+  // state — so there is no second source of truth to keep in step.
+  const url = React.useMemo(() => buildQuotationUrl(filters), [filters])
+  const { rows, loading, error, retry } = useListData<QuotationRow>(url)
 
   const openQuotation = React.useCallback(
     (row: QuotationRow) => router.push(`/quotations/${row.id}`),
@@ -306,6 +316,13 @@ export default function QuotationsPage() {
         // /api/quotations existed, but nothing called it, so PS §9 step 2
         // ("create a quotation") could not be performed from the UI.
         actions={<NewQuotationButton onCreated={retry} />}
+      />
+
+      <QuotationFilters
+        value={filters}
+        onChange={setFilters}
+        rows={rows}
+        total={rows?.length}
       />
 
       {error ? (
