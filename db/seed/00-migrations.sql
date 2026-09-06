@@ -262,3 +262,73 @@ ALTER TABLE credit_note
 
 ALTER TABLE credit_note
   ADD COLUMN IF NOT EXISTS issued_by_user_id bigint REFERENCES app_user(id) ON DELETE SET NULL;
+
+-- ═════════════════════════════════════════════════════════════════════
+-- 7 · PLACE OF SUPPLY — needed by both GST and the e-way bill
+-- ═════════════════════════════════════════════════════════════════════
+-- Neither side of a shipment knew where it was.  A customer had no state at
+-- all, and a warehouse carried its state only inside a display string
+-- ('Bhiwandi DC · Maharashtra') — fine for a label, useless for a rule.
+--
+-- Place of supply decides two things that are not optional in India:
+--   · CGST+SGST (same state) versus IGST (different states)
+--   · whether an e-way bill is needed, since the threshold differs
+--     inter-state vs intra-state and varies BY state intra-state
+--
+-- state_code is the GST numeric code, stored as the two characters that
+-- open a GSTIN: Maharashtra 27, West Bengal 19, Tamil Nadu 33, Assam 18.
+ALTER TABLE warehouse
+  ADD COLUMN IF NOT EXISTS state_code char(2);
+ALTER TABLE warehouse
+  ADD COLUMN IF NOT EXISTS state_name text;
+
+ALTER TABLE customer
+  ADD COLUMN IF NOT EXISTS state_code char(2);
+ALTER TABLE customer
+  ADD COLUMN IF NOT EXISTS state_name text;
+ALTER TABLE customer
+  ADD COLUMN IF NOT EXISTS gstin char(15);
+
+-- ── E-WAY BILLS ─────────────────────────────────────────────────────
+-- Rule 138: goods may not move above a threshold consignment value without
+-- one.  The document splits in two, and the split is load-bearing:
+--
+--   Part A  consignor/consignee, value, HSN, reason for transport.  Filing
+--           it locks the underlying invoice against modification.
+--   Part B  vehicle number, transport mode, transporter document.
+--
+-- The VALIDITY CLOCK STARTS WITH PART B, not Part A — you can prepare the
+-- consignment side in advance without burning validity while the truck is
+-- still being assigned.  Modelling that as one flat row would lose the one
+-- detail that makes the document behave the way it does.
+CREATE TABLE IF NOT EXISTS eway_bill (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ebn text NOT NULL UNIQUE,
+  order_id bigint NOT NULL REFERENCES sales_order(id) ON DELETE RESTRICT,
+  invoice_id bigint REFERENCES invoice(id) ON DELETE RESTRICT,
+  from_warehouse_id bigint NOT NULL REFERENCES warehouse(id) ON DELETE RESTRICT,
+  -- Part A
+  consignment_value numeric(14,2) NOT NULL CHECK (consignment_value >= 0),
+  from_state_code char(2) NOT NULL,
+  to_state_code   char(2) NOT NULL,
+  is_interstate boolean NOT NULL,
+  hsn_code text,
+  reason text NOT NULL DEFAULT 'Supply',
+  part_a_at timestamptz NOT NULL DEFAULT now(),
+  -- Part B — nullable until the vehicle is assigned
+  transport_mode text CHECK (transport_mode IN ('road','rail','air','ship')),
+  vehicle_number text,
+  transporter_doc text,
+  distance_km integer CHECK (distance_km IS NULL OR distance_km > 0),
+  is_odc boolean NOT NULL DEFAULT false,
+  part_b_at timestamptz,
+  valid_until timestamptz,
+  cancelled_at timestamptz,
+  created_by_user_id bigint REFERENCES app_user(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  -- The validity clock cannot exist without the transport details that start it.
+  CONSTRAINT validity_needs_part_b
+    CHECK ((valid_until IS NULL) = (part_b_at IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS eway_bill_order_idx ON eway_bill (order_id);

@@ -23,6 +23,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SplitPlan, type Plan } from '@/components/fulfilment/split-plan'
 import { ConcurrencyProbe } from '@/components/fulfilment/concurrency-probe'
+import { EwayPanel } from '@/components/fulfilment/eway-panel'
+import { AuditTimeline } from '@/components/billing/audit-timeline'
 import { SHIPMENT_BASE_COST } from '@/lib/allocate'
 import { Money } from '@/components/shared/money'
 import { InvoicePanel } from '@/components/billing/invoice-panel'
@@ -333,9 +335,16 @@ export default function OrderFulfilmentPage() {
             )
           })}
 
+          {/* Rule 138.  Lives next to the split because the split decides how
+              many statutory documents this order needs and whose threshold
+              applies to each. */}
+          <EwayPanel orderId={Number(id)} canWrite={canFulfil} />
+
           {/* The reservation race, runnable by whoever is watching.  Gated to
               the same roles that may reserve, because it really does reserve. */}
           {canFulfil && <ConcurrencyProbe orderId={Number(id)} onDone={load} />}
+
+          <AuditTimeline entityType="sales_order" entityId={Number(id)} title="Order history" />
         </TabsContent>
 
         {/* ───────────────────────── SCREEN 10 ──────────────────────── */}

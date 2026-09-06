@@ -158,4 +158,49 @@ BEGIN
     (SELECT count(*) FROM invoice WHERE gst_irn IS NOT NULL);
 END $$;
 
+-- ── PLACE OF SUPPLY ─────────────────────────────────────────────────
+-- Warehouse states were only ever in the display name. Parsed out of it
+-- rather than retyped, so the two can never disagree.
+UPDATE warehouse SET state_name = split_part(name, ' · ', 2)
+ WHERE state_name IS NULL AND name LIKE '%· %';
+
+UPDATE warehouse SET state_code = CASE state_name
+    WHEN 'Maharashtra' THEN '27'
+    WHEN 'West Bengal' THEN '19'
+    WHEN 'Tamil Nadu'  THEN '33'
+    WHEN 'Assam'       THEN '18'
+    WHEN 'Karnataka'   THEN '29'
+    WHEN 'Gujarat'     THEN '24'
+    WHEN 'Delhi'       THEN '07'
+  END
+ WHERE state_code IS NULL;
+
+-- Customers spread across states, deterministically by id so a reset always
+-- produces the same demo. Two of them share Maharashtra with the MAIN and
+-- PNQ warehouses, which is what makes the intra-state vs inter-state
+-- distinction visible: same goods, same value, different document.
+UPDATE customer c SET
+  state_code = v.code, state_name = v.nm,
+  gstin = v.code || 'AAAAA' || lpad(c.id::text, 4, '0') || 'A1Z' || chr((65 + (c.id % 26))::int)
+  FROM (VALUES
+    (0, '27', 'Maharashtra'), (1, '29', 'Karnataka'), (2, '33', 'Tamil Nadu'),
+    (3, '19', 'West Bengal'), (4, '24', 'Gujarat'),   (5, '07', 'Delhi'),
+    (6, '27', 'Maharashtra'), (7, '18', 'Assam')
+  ) AS v(slot, code, nm)
+ WHERE v.slot = (c.id % 8) AND c.state_code IS NULL;
+
+DO $$
+DECLARE v_w int; v_c int;
+BEGIN
+  SELECT count(*) INTO v_w FROM warehouse WHERE state_code IS NULL;
+  SELECT count(*) INTO v_c FROM customer  WHERE state_code IS NULL AND is_active;
+  IF v_w > 0 OR v_c > 0 THEN
+    RAISE EXCEPTION 'Place of supply missing on % warehouse(s) and % customer(s) — GST and e-way bill rules cannot be evaluated.', v_w, v_c;
+  END IF;
+  RAISE NOTICE '09-backfill.sql: place of supply OK (% warehouses, % customers, % distinct states)',
+    (SELECT count(*) FROM warehouse),
+    (SELECT count(*) FROM customer WHERE is_active),
+    (SELECT count(DISTINCT state_code) FROM customer WHERE is_active);
+END $$;
+
 COMMIT;
