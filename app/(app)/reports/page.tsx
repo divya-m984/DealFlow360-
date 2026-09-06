@@ -77,7 +77,20 @@ interface ReportData {
   }
 }
 
-const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
+// D3: on-theme chart series.  These were the default library palette (indigo,
+// emerald, amber, red, violet, cyan, pink), which is seven hues from a
+// different application than the one around them.  They now read the SAME
+// --chart-* tokens app/globals.css defines for every other screen, so the
+// charts follow light and dark instead of pinning one, and the pie sits in the
+// app's own violet family.  Recharts takes a CSS colour string, so a var()
+// works exactly where a hex did.
+const COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+]
 
 export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null)
@@ -169,7 +182,11 @@ export default function ReportsPage() {
             ],
           ],
           theme: 'grid',
-          headStyles: { fillColor: [30, 41, 59] },
+          // D3: jsPDF cannot read a CSS variable — a PDF has no stylesheet — so
+          // these are the COMPILED sRGB values of --nav (#743678) and --chart-1
+          // (#9a53aa) from app/globals.css, light palette.  If either token
+          // changes, change these too; there is no way to derive them here.
+          headStyles: { fillColor: [116, 54, 120] },
         })
 
         // Quotations Listing
@@ -191,7 +208,7 @@ export default function ReportsPage() {
             q.risk_band,
           ]),
           theme: 'striped',
-          headStyles: { fillColor: [79, 70, 229] },
+          headStyles: { fillColor: [154, 83, 170] },
         })
 
         const p = (n: number) => String(n).padStart(2, '0')
@@ -287,14 +304,14 @@ export default function ReportsPage() {
             Refresh
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={mounted && !data?.quotations?.length}>
-            <FileSpreadsheet className="mr-2 size-4 text-emerald-600 dark:text-emerald-400" />
+            <FileSpreadsheet className="mr-2 size-4 text-[var(--accent-teal)]" />
             Export CSV / XLS
           </Button>
           <Button
             size="sm"
             onClick={handleExportPDF}
             disabled={mounted && (!data?.quotations?.length || isExporting)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Download className="mr-2 size-4" />
             {isExporting ? 'Generating PDF...' : 'Export PDF'}
@@ -412,7 +429,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Pipeline</CardTitle>
-            <TrendingUp className="size-4 text-indigo-600" />
+            <TrendingUp className="size-4 text-[var(--chart-1)]" />
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -432,13 +449,13 @@ export default function ReportsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Won Revenue</CardTitle>
-            <Layers className="size-4 text-emerald-600" />
+            <Layers className="size-4 text-[var(--accent-teal)]" />
           </CardHeader>
           <CardContent>
             {loading ? (
               <Skeleton className="h-8 w-28" />
             ) : (
-              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              <div className="text-2xl font-bold text-[var(--accent-teal)]">
                 <Money value={data?.kpis?.won_revenue} currency="INR" />
               </div>
             )}
@@ -452,7 +469,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Avg Discount %</CardTitle>
-            <Percent className="size-4 text-amber-500" />
+            <Percent className="size-4 text-[var(--accent-amber)]" />
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -468,7 +485,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Gross Margin %</CardTitle>
-            <ShieldAlert className="size-4 text-blue-600" />
+            <ShieldAlert className="size-4 text-[var(--chart-5)]" />
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -497,19 +514,26 @@ export default function ReportsPage() {
             ) : data?.stages?.length ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.stages}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.6} />
                   <XAxis
                     dataKey="state"
                     tickFormatter={(v) => v.replace('_', ' ')}
                     fontSize={11}
                     tickLine={false}
+                    stroke="var(--border)"
+                    tick={{ fill: 'var(--muted-foreground)' }}
                   />
-                  <YAxis fontSize={11} tickLine={false} />
+                  <YAxis
+                    fontSize={11}
+                    tickLine={false}
+                    stroke="var(--border)"
+                    tick={{ fill: 'var(--muted-foreground)' }}
+                  />
                   <RechartsTooltip
                     formatter={(val: any) => [formatMoney(val, 'INR') ?? '₹0.00', 'Volume']}
                     labelFormatter={(lbl: any) => `Stage: ${lbl ? String(lbl).replace('_', ' ') : ''}`}
                   />
-                  <Bar dataKey="total_amount" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="total_amount" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
