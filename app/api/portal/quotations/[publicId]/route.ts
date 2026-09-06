@@ -68,14 +68,24 @@ export const GET = withAuth<Ctx>([...PORTAL], async (_req, session, ctx) => {
       [head.id],
     ),
     q(
+      // The rep's replies are part of this payload now — before, the customer
+      // could only ever see their own words and the outcome.  `author_name` is
+      // safe to expose: it is the rep the customer is already dealing with, and
+      // head.rep_name is returned to them below anyway.  No role, no email, no
+      // internal id.
       `SELECT nr.id, nr.counter_discount_pct, nr.requested_delivery_date,
               nr.status, nr.created_at,
               COALESCE(json_agg(json_build_object(
                 'id', nc.id, 'quotation_line_id', nc.quotation_line_id,
-                'comment', nc.comment, 'created_at', nc.created_at
+                'comment', nc.comment, 'created_at', nc.created_at,
+                'author_name', cau.full_name,
+                'author_side', CASE WHEN cau.role = 'portal' THEN 'buyer'
+                                    WHEN cau.id IS NULL      THEN NULL
+                                    ELSE 'seller' END
               ) ORDER BY nc.id) FILTER (WHERE nc.id IS NOT NULL), '[]') AS comments
          FROM negotiation_request nr
          LEFT JOIN negotiation_comment nc ON nc.negotiation_request_id = nr.id
+         LEFT JOIN app_user cau ON cau.id = nc.author_user_id
         WHERE nr.quotation_id = $1
         GROUP BY nr.id
         ORDER BY nr.created_at DESC`,
@@ -117,14 +127,39 @@ const Negotiate = z.strictObject({
     }))
     .max(50)
     .default([]),
+  /**
+   * REPLY TO THE OPEN REQUEST, added after review 2.
+   *
+   * Sending this alone appends a message to the conversation instead of
+   * raising a new counter-offer.  It exists because the customer previously
+   * had NO way to answer the rep: a new request supersedes the old one, and
+   * the request form is disabled while one is open — so once they had asked,
+   * they were mute until the rep ruled.  A conversation needs both sides able
+   * to speak between decisions.
+   *
+   * Mutually exclusive with the counter-offer fields — see the branch below.
+   */
+  message: z.string().trim().min(1).max(1000).optional(),
 })
 
 export const POST = withAuth<Ctx>([...PORTAL], async (req, session, ctx) => {
   const { publicId } = await ctx.params
   const body = await parseBody(req, Negotiate)
 
-  if (body.counterDiscountPct == null && body.comments.length === 0 && !body.requestedDeliveryDate) {
-    return fail('Add a comment, a counter discount, or a delivery date', 400)
+  const isReply = body.message !== undefined
+  const isOffer =
+    body.counterDiscountPct != null ||
+    body.comments.length > 0 ||
+    !!body.requestedDeliveryDate
+
+  // A reply and a counter-offer are different acts with different consequences
+  // — one is talk, the other supersedes the live ask — so a body that looks
+  // like both is rejected rather than silently treated as one of them.
+  if (isReply && isOffer) {
+    return fail('Send a message or a counter-offer, not both in one request', 400)
+  }
+  if (!isReply && !isOffer) {
+    return fail('Add a message, a comment, a counter discount, or a delivery date', 400)
   }
 
   return tx(async (c) => {
@@ -147,6 +182,41 @@ export const POST = withAuth<Ctx>([...PORTAL], async (req, session, ctx) => {
       )
     }
 
+    // ── REPLY ─────────────────────────────────────────────────────
+    // Appends to the live request and supersedes nothing.  The quotation's
+    // terms, state and version are all untouched: the customer saying "any
+    // movement on this?" is not a new offer, and treating it as one would
+    // wipe the counter-offer they are waiting on.
+    if (isReply) {
+      const { rows: open } = await c.query<{ id: number }>(
+        `SELECT id FROM negotiation_request
+          WHERE quotation_id = $1 AND status = 'open'
+          ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+        [qq.id],
+      )
+      if (!open[0]) {
+        return fail('There is no open request to reply to — send a change request instead', 409)
+      }
+
+      const { rows: msg } = await c.query<{ id: number }>(
+        // author_side is written, not inferred on read: this handler is
+        // withAuth(['portal']), so the message is always the buyer's.
+        `INSERT INTO negotiation_comment
+           (negotiation_request_id, quotation_line_id, comment, author_user_id, author_side)
+         VALUES ($1, NULL, $2, $3, 'buyer') RETURNING id`,
+        [open[0].id, body.message, session.userId],
+      )
+
+      await c.query(
+        `UPDATE quotation SET last_activity_at = now() WHERE id = $1`,
+        [qq.id],
+      )
+      await audit(c, 'quotation', qq.id, 'negotiation_message', session.userId,
+        body.message!, { negotiation_request_id: open[0].id })
+
+      return ok({ negotiationRequestId: open[0].id, commentId: msg[0].id, state: qq.state })
+    }
+
     // Supersede any earlier open request — one live ask at a time, so the rep
     // is never looking at two contradictory counter-offers.
     await c.query(
@@ -164,12 +234,13 @@ export const POST = withAuth<Ctx>([...PORTAL], async (req, session, ctx) => {
 
     for (const cm of body.comments) {
       await c.query(
-        `INSERT INTO negotiation_comment (negotiation_request_id, quotation_line_id, comment)
-         SELECT $1, $2, $3
+        `INSERT INTO negotiation_comment
+           (negotiation_request_id, quotation_line_id, comment, author_user_id, author_side)
+         SELECT $1, $2, $3, $5, 'buyer'
           WHERE $2::bigint IS NULL
              OR EXISTS (SELECT 1 FROM quotation_line
                          WHERE id = $2 AND quotation_id = $4)`,
-        [nr[0].id, cm.quotationLineId ?? null, cm.comment, qq.id],
+        [nr[0].id, cm.quotationLineId ?? null, cm.comment, qq.id, session.userId],
       )
     }
 

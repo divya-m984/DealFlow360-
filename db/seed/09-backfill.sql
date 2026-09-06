@@ -203,4 +203,91 @@ BEGIN
     (SELECT count(DISTINCT state_code) FROM customer WHERE is_active);
 END $$;
 
+-- ── invoice_line.order_line_id / sales_order_line.qty_invoiced ───────
+-- 00-migrations.sql adds both columns; nothing has ever SET them on seeded
+-- rows, and that is not cosmetic — it is a double-billing bug.
+--
+-- 06-orders.sql inserts invoice_line rows with (invoice_id, description, qty,
+-- unit_price, amount) and no link back to the order line they billed.
+-- lib/invoice.ts:getInvoiceableLines() measures what is still owed with
+-- `SUM(il.amount) WHERE il.order_line_id IS NOT NULL` and `sol.qty_invoiced`.
+-- With both left at NULL/0, every already-invoiced seeded order reads as
+-- "nothing billed yet", so the first shipment against it would raise a SECOND
+-- invoice for units the customer has already been charged for.  On a fresh
+-- reset, which is the state every demo starts from.
+--
+-- ── HOW THE LINK IS RECOVERED ───────────────────────────────────────
+-- The seed inserts one invoice_line per one-time sales_order_line, `ORDER BY
+-- sol.id`, and raises at most one one-time invoice per order — so position
+-- within the invoice maps exactly onto position within the order's one-time
+-- lines.  That correspondence holds for THIS seeded data, which is why the
+-- repair lives here next to the data it repairs rather than in lib/.
+-- Subscription invoices (kind = 'recurring') are excluded: they are billed
+-- from subscription periods and have no order line at all.
+WITH legacy_line AS (
+  SELECT il.id,
+         i.order_id,
+         row_number() OVER (PARTITION BY il.invoice_id ORDER BY il.id) AS pos
+    FROM invoice_line il
+    JOIN invoice i ON i.id = il.invoice_id
+   WHERE il.order_line_id IS NULL
+     AND i.order_id IS NOT NULL
+     AND i.kind = 'one_time'
+),
+one_time_order_line AS (
+  SELECT sol.id,
+         sol.order_id,
+         row_number() OVER (PARTITION BY sol.order_id ORDER BY sol.id) AS pos
+    FROM sales_order_line sol
+    JOIN quotation_line ql ON ql.id = sol.quotation_line_id
+   WHERE ql.line_type = 'one_time'
+)
+UPDATE invoice_line
+   SET order_line_id = otol.id
+  FROM legacy_line ll
+  JOIN one_time_order_line otol
+    ON otol.order_id = ll.order_id
+   AND otol.pos = ll.pos
+ WHERE invoice_line.id = ll.id;
+
+-- The quantity half of the same fact.  A voided invoice billed nothing, so it
+-- must not count — the same exclusion getInvoiceableLines() applies.  Capped
+-- at sol.qty because `cannot_invoice_more_than_ordered` is a CHECK, and a
+-- seed that trips it would fail the whole reset.
+UPDATE sales_order_line sol
+   SET qty_invoiced = LEAST(billed.qty, sol.qty)
+  FROM (
+    SELECT il.order_line_id, SUM(il.qty) AS qty
+      FROM invoice_line il
+      JOIN invoice i ON i.id = il.invoice_id
+     WHERE il.order_line_id IS NOT NULL
+       AND i.status <> 'void'
+     GROUP BY il.order_line_id
+  ) billed
+ WHERE billed.order_line_id = sol.id
+   AND sol.qty_invoiced = 0;
+
+DO $$
+DECLARE v_orphan int; v_linked int;
+BEGIN
+  -- A one-time invoice line with no order line left after the repair means the
+  -- positional assumption above no longer holds — most likely because the seed
+  -- started raising more than one invoice per order.  Fail loudly here rather
+  -- than let the demo silently double-bill.
+  SELECT count(*) INTO v_orphan
+    FROM invoice_line il
+    JOIN invoice i ON i.id = il.invoice_id
+   WHERE il.order_line_id IS NULL
+     AND i.order_id IS NOT NULL
+     AND i.kind = 'one_time';
+  IF v_orphan > 0 THEN
+    RAISE EXCEPTION
+      '% one-time invoice line(s) could not be matched to an order line — progressive invoicing would re-bill them.', v_orphan;
+  END IF;
+  SELECT count(*) INTO v_linked FROM invoice_line WHERE order_line_id IS NOT NULL;
+  RAISE NOTICE '09-backfill.sql: invoicing links OK (% invoice lines linked, % order lines part-billed)',
+    v_linked,
+    (SELECT count(*) FROM sales_order_line WHERE qty_invoiced > 0);
+END $$;
+
 COMMIT;

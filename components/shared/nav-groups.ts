@@ -36,16 +36,18 @@ const DESCRIPTIONS: Record<string, string> = {
   '/subscriptions': 'Recurring plans, their period and next renewal.',
   '/reports': 'Exportable summaries of pipeline, margin and fulfilment.',
   '/settings': 'Discount tiers and approval thresholds — the governance rules.',
-  // ⚠ Added by D2, flagged in OWNERSHIP.md.
   '/credit': 'Exposure, ageing and credit limits — what order confirmation enforces.',
+  '/messages': 'Quotations the customer is talking to us about, and who owes a reply.',
 }
 
 /** Which hrefs sit under which group, in the order they should be listed. */
 const LAYOUT: Array<{ label: string; href?: string; children?: string[] }> = [
   { label: 'Dashboard', href: '/' },
-  { label: 'Sell', children: ['/quotations', '/approvals', '/deal-health'] },
+  { label: 'Sell', children: ['/quotations', '/approvals', '/messages', '/deal-health'] },
   { label: 'Deliver', children: ['/fulfilment', '/products'] },
   { label: 'Billing', children: ['/invoices', '/subscriptions'] },
+  // '/admin/users' removed with the duplicate screen behind it — user
+  // administration is on /settings, against the canonical /api/users.
   { label: 'Admin', children: ['/reports', '/credit', '/settings'] },
 ]
 

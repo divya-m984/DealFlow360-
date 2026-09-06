@@ -85,7 +85,27 @@ export function withAuth<C = unknown>(
   return async (req: Request, ctx: C): Promise<Response> => {
     const session = await getSession()
     if (!session) return fail('Not authenticated', 401)
-    if (roles && !roles.includes(session.role)) return fail('Forbidden', 403)
+    // SUPER ADMIN INHERITS ADMIN — the single rule that implements the role
+    // added by db/seed/00-migrations.sql (section 1).
+    //
+    // Every route in this app allow-lists roles explicitly, so a new enum value
+    // starts with ZERO permissions everywhere.  Without this line super_admin
+    // would be LESS powerful than admin until dozens of routes across four
+    // people's files were edited, and every route added afterwards would be a
+    // fresh chance to forget.
+    //
+    // It is deliberately narrow.  It says "a super admin may do anything an
+    // admin may do" — NOT "a super admin may do anything".  A route gated on
+    // ['portal'] still refuses it, which is what keeps middleware.ts's
+    // separation of the two worlds intact, and a route gated on ['finance']
+    // still refuses it too.  Super-admin-only endpoints gate on
+    // ['super_admin'] and are unaffected, because that list does not contain
+    // 'admin'.
+    const permitted =
+      !roles ||
+      roles.includes(session.role) ||
+      (session.role === 'super_admin' && roles.includes('admin'))
+    if (!permitted) return fail('Forbidden', 403)
     try {
       return await handler(req, session, ctx)
     } catch (e: any) {

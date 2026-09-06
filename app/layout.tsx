@@ -32,7 +32,7 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
   // ONE value, not a light/dark pair: --nav is the same plum in both palettes,
   // so the mobile browser chrome continues the bar either way.
-  themeColor: "#5e3a54",
+  themeColor: "#743678",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

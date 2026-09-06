@@ -149,6 +149,16 @@ export const POST = withAuth(null, async (req, session) => {
 
     // Billing, per PS §B7: the two kinds of line are billed by different
     // mechanisms, from the same order.
+    //
+    // AT CREATION THIS BILLS SERVICES ONLY.  createOrderInvoice() charges for
+    // stock-managed lines when they SHIP, and nothing has shipped yet — so on
+    // a physical-goods order this returns null and the first invoice appears
+    // at the first shipment instead.  Lines held in no warehouse (Onsite
+    // Setup, Extended Warranty) have no shipment to wait for and are billed
+    // here, in full.  A pure-goods order therefore now leaves this endpoint
+    // with no one-time invoice, which is correct and is the whole point of the
+    // change: the customer is not charged for 100 laptops on the day 70 of
+    // them exist.
     const oneTimeInvoice = await createOrderInvoice(c, orderId)
     const recurringInvoices: { id: number; number: string; amount: number }[] = []
     for (const subId of created.subscriptions) {

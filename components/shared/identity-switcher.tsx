@@ -29,6 +29,7 @@ import { cn } from 'cn'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -182,26 +183,28 @@ export function IdentitySwitcher({ me }: { me: Identity | null }) {
           `w-(--anchor-width)`, and the anchor is now a 32px circle. */}
       <DropdownMenuContent align="end" sideOffset={6} className="w-72 min-w-72">
         {/* Signed-in-as moved here from the bar, so removing the text from the
-            chrome did not remove it from the application. */}
-        <DropdownMenuLabel className="flex min-w-0 flex-col leading-tight">
+            chrome did not remove it from the application.
+
+            A PLAIN DIV, not <DropdownMenuLabel>: that component renders Base
+            UI's Menu.GroupLabel, which throws "MenuGroupContext is missing"
+            unless it is inside a Menu.Group.  This block labels the menu, not a
+            group of items, so it has no group to belong to. */}
+        <div className="flex min-w-0 flex-col px-2 py-1.5 leading-tight">
           <span className="truncate text-sm font-medium text-foreground">
             {me?.fullName ?? 'Signed in'}
           </span>
-          <span className="truncate text-xs font-normal text-muted-foreground capitalize">
+          <span className="truncate text-xs text-muted-foreground capitalize">
             {me ? roleLabel(me.role) : '—'}
           </span>
-        </DropdownMenuLabel>
+        </div>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Switch identity
-        </DropdownMenuLabel>
 
         {loadingList && (
-          <p className="px-1.5 py-2 text-xs text-muted-foreground">Loading identities…</p>
+          <p className="px-2 py-2 text-xs text-muted-foreground">Loading identities…</p>
         )}
 
         {listError && (
-          <p className="px-1.5 py-2 text-xs text-muted-foreground">
+          <p className="px-2 py-2 text-xs text-muted-foreground">
             {listError}
             <span className="mt-1 block text-[0.7rem] opacity-70">
               Identity switching is disabled outside development.
@@ -210,44 +213,52 @@ export function IdentitySwitcher({ me }: { me: Identity | null }) {
         )}
 
         {!loadingList && !listError && internal.length === 0 && (
-          <p className="px-1.5 py-2 text-xs text-muted-foreground">
+          <p className="px-2 py-2 text-xs text-muted-foreground">
             No other internal identities are seeded.
           </p>
         )}
 
-        {internal.map((identity) => {
-          const current = me?.email?.toLowerCase() === identity.email.toLowerCase()
-          const pending = switchingTo === identity.email
-          return (
-            <DropdownMenuItem
-              key={identity.email}
-              disabled={busy || current}
-              closeOnClick={false}
-              onClick={() => switchTo(identity)}
-              className="gap-2"
-            >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[0.65rem] font-semibold text-muted-foreground">
-                {pending ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : (
-                  initials(identity.full_name)
-                )}
-              </span>
-              <span className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate text-sm">{identity.full_name}</span>
-                {/* The role is the point of the switch, so it is never truncated
-                    away in favour of the email. */}
-                <span className="truncate text-xs text-muted-foreground capitalize">
-                  {roleLabel(identity.role)}
+        {/* The identity rows DO form a group, so this label is a real
+            GroupLabel and gets the Menu.Group ancestor it requires. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            Switch identity
+          </DropdownMenuLabel>
+
+          {internal.map((identity) => {
+            const current = me?.email?.toLowerCase() === identity.email.toLowerCase()
+            const pending = switchingTo === identity.email
+            return (
+              <DropdownMenuItem
+                key={identity.email}
+                disabled={busy || current}
+                closeOnClick={false}
+                onClick={() => switchTo(identity)}
+                className="gap-2"
+              >
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[0.65rem] font-semibold text-muted-foreground">
+                  {pending ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    initials(identity.full_name)
+                  )}
                 </span>
-              </span>
-              {current && <Check className="ml-auto size-3.5 text-muted-foreground" />}
-            </DropdownMenuItem>
-          )
-        })}
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="truncate text-sm">{identity.full_name}</span>
+                  {/* The role is the point of the switch, so it is never
+                      truncated away in favour of the email. */}
+                  <span className="truncate text-xs text-muted-foreground capitalize">
+                    {roleLabel(identity.role)}
+                  </span>
+                </span>
+                {current && <Check className="ml-auto size-3.5 text-muted-foreground" />}
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuGroup>
 
         <DropdownMenuSeparator />
-        <p className="px-1.5 py-1 text-[0.7rem] leading-snug text-muted-foreground">
+        <p className="px-2 py-1 text-[0.7rem] leading-snug text-muted-foreground">
           Development only. The customer portal is a separate application and is
           not switchable from here.
         </p>

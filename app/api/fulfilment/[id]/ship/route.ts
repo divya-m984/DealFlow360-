@@ -6,6 +6,7 @@
 // was already spoken for the moment it was reserved.
 import { tx } from '@/lib/db'
 import { ok, fail, withAuth } from '@/lib/api'
+import { createOrderInvoice } from '@/lib/invoice'
 import { shipOrder, recomputeOrderState } from '../../_stock'
 
 export const runtime = 'nodejs'
@@ -36,13 +37,34 @@ export const POST = withAuth<Ctx>([...FULFIL_WRITE_ROLES], async (_req, session,
     }
     const state = await recomputeOrderState(c, orderId)
 
+    // BILL WHAT JUST WENT OUT THE DOOR.
+    //
+    // The invoice is raised HERE rather than at order creation, and raised
+    // again on every subsequent shipment, so a part-filled order is billed for
+    // the part that was actually delivered.  createOrderInvoice() subtracts
+    // what has already been invoiced for each line, so calling it after every
+    // shipment can never double-bill a unit; it returns null when this
+    // shipment had nothing new to charge for.
+    //
+    // Same transaction as the stock movement on purpose: stock leaving the
+    // warehouse and the customer being charged for it are one event, and a
+    // crash between them would either give the goods away or bill for goods
+    // still on the shelf.
+    const invoice = await createOrderInvoice(c, orderId)
+
     await c.query(
       `INSERT INTO audit_log (entity_type, entity_id, action, actor_user_id, note, payload)
        VALUES ('sales_order', $1, 'fulfilment_ship', $2, $3, $4)`,
-      [orderId, session.userId, `Shipped ${shipped} allocation(s)`, JSON.stringify({ shipped, state })],
+      [
+        orderId,
+        session.userId,
+        `Shipped ${shipped} allocation(s)` +
+          (invoice ? `; invoiced ${invoice.number} for ${invoice.amount}` : '; nothing new to invoice'),
+        JSON.stringify({ shipped, state, invoice }),
+      ],
     )
 
-    return { orderId, shipped, state }
+    return { orderId, shipped, state, invoice }
   })
 
   return ok(result)

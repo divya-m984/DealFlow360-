@@ -48,6 +48,10 @@ const STATUS: Record<string, Entry> = {
   sales_manager: { label: 'Sales manager', tone: 'info' },
   finance: { label: 'Finance', tone: 'info' },
   admin: { label: 'Admin', tone: 'neutral' },
+  // db/seed/00-migrations.sql.  'info' rather than 'neutral' so a privileged account is
+  // findable in a list of thirty — it is the one role that can clear the
+  // database and mint other admins.
+  super_admin: { label: 'Super admin', tone: 'info' },
   portal: { label: 'Portal', tone: 'muted' },
 
   // invoice_status
