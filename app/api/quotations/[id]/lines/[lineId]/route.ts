@@ -6,12 +6,12 @@ import { z } from 'zod'
 import type { PoolClient } from 'pg'
 import { tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
+import { INTERNAL_WRITERS } from '@/lib/roles'
 import { recomputeQuotation, audit } from '@/lib/quotation'
 import { isApproved } from '@/lib/approval'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 type Ctx = { params: Promise<{ id: string; lineId: string }> }
 
 const PatchLine = z.strictObject({
@@ -51,7 +51,7 @@ async function guard(c: PoolClient, id: number, lineId: number) {
   return null
 }
 
-export const PATCH = withAuth<Ctx>([...INTERNAL], async (req, session, ctx) => {
+export const PATCH = withAuth<Ctx>([...INTERNAL_WRITERS], async (req, session, ctx) => {
   const { id: idRaw, lineId: lineRaw } = await ctx.params
   const id = Number(idRaw)
   const lineId = Number(lineRaw)
@@ -85,7 +85,7 @@ export const PATCH = withAuth<Ctx>([...INTERNAL], async (req, session, ctx) => {
   })
 })
 
-export const DELETE = withAuth<Ctx>([...INTERNAL], async (_req, session, ctx) => {
+export const DELETE = withAuth<Ctx>([...INTERNAL_WRITERS], async (_req, session, ctx) => {
   const { id: idRaw, lineId: lineRaw } = await ctx.params
   const id = Number(idRaw)
   const lineId = Number(lineRaw)

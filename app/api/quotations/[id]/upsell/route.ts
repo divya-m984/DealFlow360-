@@ -13,13 +13,13 @@
 // build next" note. Do not claim history on stage that we did not compute.
 import { q } from '@/lib/db'
 import { ok, fail, withAuth } from '@/lib/api'
+import { INTERNAL_READERS } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 type Ctx = { params: Promise<{ id: string }> }
 
-export const GET = withAuth<Ctx>([...INTERNAL], async (_req, _session, ctx) => {
+export const GET = withAuth<Ctx>([...INTERNAL_READERS], async (_req, _session, ctx) => {
   const id = Number((await ctx.params).id)
 
   const [head] = await q<{ id: number }>(`SELECT id FROM quotation WHERE id = $1`, [id])

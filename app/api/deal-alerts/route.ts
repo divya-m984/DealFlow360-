@@ -11,12 +11,12 @@
 // that contract, so do not rename a field without telling them.
 import { q } from '@/lib/db'
 import { ok, withAuth } from '@/lib/api'
+import { INTERNAL_READERS } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 
-export const GET = withAuth([...INTERNAL], async (req) => {
+export const GET = withAuth([...INTERNAL_READERS], async (req) => {
   const p = new URL(req.url).searchParams
   const where: string[] = []
   const args: unknown[] = []

@@ -2,11 +2,12 @@
 // PS §A7 filters: Period · Sales Team/Rep · Approval Status · Product/Category.
 
 import { withAuth, ok, fail } from '@/lib/api'
+import { INTERNAL_READERS } from '@/lib/roles'
 import { q } from '@/lib/db'
 
 export const runtime = 'nodejs'
 
-export const GET = withAuth(['sales_rep', 'sales_manager', 'finance', 'admin'], async (req, session) => {
+export const GET = withAuth([...INTERNAL_READERS], async (req, session) => {
   const url = new URL(req.url)
   const period = url.searchParams.get('period') || 'all'
   const teamId = url.searchParams.get('teamId')

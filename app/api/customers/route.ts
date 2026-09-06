@@ -12,12 +12,12 @@
 // discount.
 import { q } from '@/lib/db'
 import { ok, withAuth } from '@/lib/api'
+import { INTERNAL_READERS } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 
-export const GET = withAuth([...INTERNAL], async (req) => {
+export const GET = withAuth([...INTERNAL_READERS], async (req) => {
   const search = new URL(req.url).searchParams.get('search')
   const args: unknown[] = []
   const where = ['c.is_active']

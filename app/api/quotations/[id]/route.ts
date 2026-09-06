@@ -2,12 +2,12 @@
 import { z } from 'zod'
 import { q, tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
+import { INTERNAL_READERS, INTERNAL_WRITERS } from '@/lib/roles'
 import { recomputeQuotation, audit } from '@/lib/quotation'
 import { isApproved, IS_APPROVED_SQL } from '@/lib/approval'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 type Ctx = { params: Promise<{ id: string }> }
 
 // ── GET /api/quotations/[id] ───────────────────────────────────────
@@ -25,7 +25,7 @@ type Ctx = { params: Promise<{ id: string }> }
 //     reads then run CONCURRENTLY rather than one after another.
 //   • nothing checks out a pool client.  isApproved() accepts the pool, so a
 //     read-only handler never holds a connection it does not need.
-export const GET = withAuth<Ctx>([...INTERNAL], async (_req, _session, ctx) => {
+export const GET = withAuth<Ctx>([...INTERNAL_READERS], async (_req, _session, ctx) => {
   const id = Number((await ctx.params).id)
 
   const [head] = await q(
@@ -93,7 +93,7 @@ const Patch = z.strictObject({
   pricelistId: z.number().int().positive().nullable().optional(),
 })
 
-export const PATCH = withAuth<Ctx>([...INTERNAL], async (req, session, ctx) => {
+export const PATCH = withAuth<Ctx>([...INTERNAL_WRITERS], async (req, session, ctx) => {
   const id = Number((await ctx.params).id)
   const body = await parseBody(req, Patch)
 

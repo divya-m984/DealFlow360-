@@ -2,7 +2,8 @@
 import { z } from 'zod'
 import { q, tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
-import { actOnApproval, isApproved } from '@/lib/approval'
+import { INTERNAL_READERS } from '@/lib/roles'
+import { actOnApproval, isApproved, type ApprovalActorRole } from '@/lib/approval'
 import { audit } from '@/lib/quotation'
 
 export const runtime = 'nodejs'
@@ -17,7 +18,7 @@ type Ctx = { params: Promise<{ id: string }> }
 // screen are driven by the POST below, which they cannot call. Reading why
 // their own deal was flagged is the point of the screen for them.
 export const GET = withAuth<Ctx>(
-  ['sales_rep', 'sales_manager', 'finance', 'admin'],
+  [...INTERNAL_READERS],
   async (_req, session, ctx) => {
   const id = Number((await ctx.params).id)
 
@@ -102,10 +103,12 @@ export const POST = withAuth<Ctx>(['sales_manager', 'finance', 'admin'], async (
   }
 
   return tx(async (c) => {
-    // actOnApproval refuses stale versions and enforces manager-before-finance.
+    // actOnApproval refuses a step that is not the actor's own, refuses stale
+    // versions, and enforces manager-before-finance.
     const acted = await actOnApproval(c, {
       approvalRequestId: id,
       actorUserId: session.userId,
+      actorRole: session.role as ApprovalActorRole,
       status: body.status,
       note: body.note,
     })

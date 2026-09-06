@@ -122,12 +122,38 @@ export async function createApprovalChain(
  *
  * Finance cannot act before the manager has approved — the chain is ordered by
  * `seq`, and that ordering is enforced HERE, not merely by hiding a button.
+ *
+ * The same sentence applies to WHO may sign a step, and used not to. The route
+ * allow-list is ['sales_manager', 'finance', 'admin'] — coarse, because it can
+ * only see the role, not the row. Nothing then compared the actor's role to the
+ * LEVEL of the row they were signing, so a sales manager could sign the finance
+ * step once their own step was clear, and finance could sign the manager's.
+ * Screen 6 already refused to draw the buttons in that case
+ * (`me.role === 'admin' || r.level === myLevel`), which made it a client-side
+ * check with nothing behind it — the exact shape of hole a curl request walks
+ * through.
+ *
+ * Two-tier approval is the product's headline governance claim, and it means
+ * nothing if one person can sign both tiers. Enforced here rather than in the
+ * route so every future caller inherits it.
  */
+export type ApprovalActorRole = 'sales_manager' | 'finance' | 'admin'
+
+/** Which role owns which step. `admin` is deliberately absent: it is handled
+ *  below as an explicit override, so that "an administrator signed a step that
+ *  was not theirs" is a named branch someone can find and delete, rather than
+ *  an accident of a permissive lookup. */
+const LEVEL_OWNER: Record<'sales_manager' | 'finance', ApprovalActorRole> = {
+  sales_manager: 'sales_manager',
+  finance: 'finance',
+}
+
 export async function actOnApproval(
   c: PoolClient,
   params: {
     approvalRequestId: number
     actorUserId: number
+    actorRole: ApprovalActorRole
     status: Extract<ApprovalStatus, 'approved' | 'returned' | 'rejected'>
     note?: string
   },
@@ -149,6 +175,17 @@ export async function actOnApproval(
     )
   }
   if (req.status !== 'pending') throw new Error(`Already ${req.status}`)
+
+  // Separation of duties. Checked before the ordering rule below, because
+  // "that step is not yours" is the truer answer than "finance has not gone
+  // yet" when a manager reaches for the finance step.
+  const owner = LEVEL_OWNER[req.level as 'sales_manager' | 'finance']
+  if (params.actorRole !== 'admin' && params.actorRole !== owner) {
+    throw new Error(
+      `This step belongs to ${req.level === 'finance' ? 'Finance' : 'the Sales Manager'}. ` +
+        'The two levels exist so that one person cannot sign both.',
+    )
+  }
 
   if (req.level === 'finance') {
     const { rows: mgr } = await c.query<{ status: ApprovalStatus }>(

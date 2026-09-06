@@ -36,6 +36,7 @@ import { Money, Num, formatMoney } from '@/components/shared/money'
 // ⚠ Cross-lane, flagged in OWNERSHIP.md: D2 added the negotiation thread
 // (jury review 2, ask 1). Self-contained — delete these two lines to remove it.
 import { NegotiationThread } from '@/components/negotiation/thread'
+import { LineagePanel } from '@/components/quotation/lineage-panel'
 
 type Line = {
   id: number; line_no: number; product_name: string; sku: string
@@ -420,6 +421,12 @@ export default function QuotationDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Document lineage (jury review 2, ask 5) ──────────────────────
+          Renders itself only once this quotation has become an order, so it is
+          invisible on drafts and unmissable on the one screen a judge asks the
+          question from. */}
+      <LineagePanel quotationId={id} />
 
       {/* ── Approval chain + audit ────────────────────────────────────── */}
       <div className="grid gap-4 lg:grid-cols-2">

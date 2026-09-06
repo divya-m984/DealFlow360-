@@ -8,11 +8,11 @@
 import { z } from 'zod'
 import { tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
+import { INTERNAL_WRITERS } from '@/lib/roles'
 import { audit } from '@/lib/quotation'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 type Ctx = { params: Promise<{ id: string }> }
 
 const Body = z.strictObject({
@@ -27,7 +27,7 @@ const LABEL = {
   resolve: 'Resolved',
 } as const
 
-export const POST = withAuth<Ctx>([...INTERNAL], async (req, session, ctx) => {
+export const POST = withAuth<Ctx>([...INTERNAL_WRITERS], async (req, session, ctx) => {
   const id = Number((await ctx.params).id)
   const { action, note } = await parseBody(req, Body)
 

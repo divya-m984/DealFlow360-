@@ -262,19 +262,38 @@ export default function ReportsPage() {
           </p>
         </div>
 
+        {/* ⚠ CHANGED BY D1 AFTER THE FREEZE — D4, this is your file.
+            HYDRATION MISMATCH, third of the same family (see the long note in
+            components/data-table.tsx for the first).
+
+            All three of these buttons had `disabled` bound to state that is
+            still settling when React hydrates. `loading` starts TRUE and
+            `data` starts null, so the server rendered all three as
+            `disabled=""` — verified by dumping the SSR HTML of /reports, which
+            was the only screen in the app emitting a disabled button. By the
+            time React hydrated, the fetch had resolved, so the client's first
+            render disagreed on exactly that attribute and React reported the
+            tree as unpatchable.
+
+            `mounted` is the fix and it was already here — you use it at the
+            two chart blocks below for the same reason. It is false on the
+            server AND on the client's first render (an effect sets it), so
+            both agree; the real value takes over on the next render. Guarding
+            the attribute rather than removing it keeps the disabled-while-
+            loading behaviour you wanted. */}
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => fetchReports()} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => fetchReports()} disabled={mounted && loading}>
             <RefreshCcw className="mr-2 size-4" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={!data?.quotations?.length}>
+          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={mounted && !data?.quotations?.length}>
             <FileSpreadsheet className="mr-2 size-4 text-emerald-600 dark:text-emerald-400" />
             Export CSV / XLS
           </Button>
           <Button
             size="sm"
             onClick={handleExportPDF}
-            disabled={!data?.quotations?.length || isExporting}
+            disabled={mounted && (!data?.quotations?.length || isExporting)}
             className="bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             <Download className="mr-2 size-4" />

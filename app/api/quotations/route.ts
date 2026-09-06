@@ -2,16 +2,15 @@
 import { z } from 'zod'
 import { q, tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
+import { INTERNAL_READERS, INTERNAL_WRITERS } from '@/lib/roles'
 import { recomputeQuotation, audit } from '@/lib/quotation'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
-
 // ── GET /api/quotations ────────────────────────────────────────────
 // Screen 3 (kanban + table).  PS §A7 filter set: period, sales team / rep,
 // approval status, product / category.
-export const GET = withAuth([...INTERNAL], async (req) => {
+export const GET = withAuth([...INTERNAL_READERS], async (req) => {
   const p = new URL(req.url).searchParams
   const where: string[] = []
   const args: unknown[] = []
@@ -64,7 +63,7 @@ const NewQuotation = z.strictObject({
   customerId: z.number().int().positive(),
 })
 
-export const POST = withAuth([...INTERNAL], async (req, session) => {
+export const POST = withAuth([...INTERNAL_WRITERS], async (req, session) => {
   const { customerId } = await parseBody(req, NewQuotation)
 
   return tx(async (c) => {

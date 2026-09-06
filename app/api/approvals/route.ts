@@ -1,6 +1,7 @@
 // OWNER: D1.  The approvals queue — screen 5.
 import { q } from '@/lib/db'
 import { ok, withAuth } from '@/lib/api'
+import { INTERNAL_READERS } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
@@ -18,7 +19,7 @@ export const runtime = 'nodejs'
 //
 // A rep is scoped to quotations they OWN, in the WHERE clause rather than by
 // filtering afterwards, so another rep's pipeline is never selected at all.
-export const GET = withAuth(['sales_rep', 'sales_manager', 'finance', 'admin'], async (req, session) => {
+export const GET = withAuth([...INTERNAL_READERS], async (req, session) => {
   const p = new URL(req.url).searchParams
   const where: string[] = ['a.quotation_version = qq.version']
   const args: unknown[] = []

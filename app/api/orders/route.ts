@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { q, tx } from '@/lib/db'
 import { ok, fail, parseBody, withAuth, BusinessRuleError } from '@/lib/api'
+import { INTERNAL_WRITERS } from '@/lib/roles'
 import { startSubscription } from '@/lib/billing'
 import { createOrderInvoice, createSubscriptionInvoice } from '@/lib/invoice'
 import { isStockManaged, suggestPlan, persistPlan, recomputeOrderState } from '../fulfilment/_stock'
@@ -40,7 +41,24 @@ const Body = z.strictObject({
   promisedInDays: z.number().int().min(0).max(365).default(7),
 })
 
-export const POST = withAuth(null, async (req, session) => {
+// ⚠ CHANGED BY D1 AFTER THE FREEZE — D2, this is your file; flagged rather
+// than worked around because it is a live privilege hole, not a preference.
+//
+// This was `withAuth(null, ...)`, meaning "any authenticated user". That was
+// TRUE when it was written: withAuth already refuses portal users on internal
+// routes, so `null` meant "any internal user", and every internal role could
+// legitimately turn a confirmed quotation into an order.
+//
+// Adding `viewer` to the Role union changed what `null` MEANS without changing
+// a character of this line. Verified against the running app: viewer@dealflow
+// .app POSTed here and created SO-2016, allocated stock and put the order into
+// `backorder`. The read-only role wrote to the order book.
+//
+// This is the general hazard with `null` — it is not a permission, it is the
+// absence of one, so it silently widens every time the role list grows. Naming
+// the roles means the next added role starts with nothing here, which is the
+// behaviour the rest of the codebase already relies on.
+export const POST = withAuth([...INTERNAL_WRITERS], async (req, session) => {
   const { quotationId, promisedInDays } = await parseBody(req, Body)
 
   const result = await tx(async (c) => {

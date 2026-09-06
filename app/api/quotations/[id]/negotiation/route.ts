@@ -24,16 +24,16 @@
 import { z } from 'zod'
 import { q, tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
+import { INTERNAL_READERS, INTERNAL_WRITERS } from '@/lib/roles'
 import { recomputeQuotation, audit } from '@/lib/quotation'
 import { createApprovalChain, isApproved } from '@/lib/approval'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 type Ctx = { params: Promise<{ id: string }> }
 
 // ── GET: what has the customer asked for? ──────────────────────────
-export const GET = withAuth<Ctx>([...INTERNAL], async (_req, _s, ctx) => {
+export const GET = withAuth<Ctx>([...INTERNAL_READERS], async (_req, _s, ctx) => {
   const id = Number((await ctx.params).id)
   return ok(
     await q(
@@ -61,7 +61,7 @@ const Act = z.strictObject({
   note: z.string().trim().min(1).optional(),
 })
 
-export const POST = withAuth<Ctx>([...INTERNAL], async (req, session, ctx) => {
+export const POST = withAuth<Ctx>([...INTERNAL_WRITERS], async (req, session, ctx) => {
   const id = Number((await ctx.params).id)
   const body = await parseBody(req, Act)
 

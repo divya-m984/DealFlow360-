@@ -7,12 +7,12 @@
 import { z } from 'zod'
 import { tx } from '@/lib/db'
 import { ok, fail, withAuth, parseBody } from '@/lib/api'
+import { INTERNAL_WRITERS } from '@/lib/roles'
 import { recomputeQuotation, audit } from '@/lib/quotation'
 import { isApproved } from '@/lib/approval'
 
 export const runtime = 'nodejs'
 
-const INTERNAL = ['sales_rep', 'sales_manager', 'finance', 'admin'] as const
 type Ctx = { params: Promise<{ id: string }> }
 
 const NewLine = z.strictObject({
@@ -24,7 +24,7 @@ const NewLine = z.strictObject({
   subscriptionPlanId: z.number().int().positive().nullable().optional(),
 })
 
-export const POST = withAuth<Ctx>([...INTERNAL], async (req, session, ctx) => {
+export const POST = withAuth<Ctx>([...INTERNAL_WRITERS], async (req, session, ctx) => {
   const id = Number((await ctx.params).id)
   const body = await parseBody(req, NewLine)
 
